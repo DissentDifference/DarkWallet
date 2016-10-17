@@ -45,6 +45,7 @@ class Settings:
         bs = config["bs"]
         self.bs_url = bs.get("url", "tcp://gateway.unsystem.net:9091")
         self.bs_query_expire_time = int(bs.get("query-expire-time", 200))
+        self.socks5 = bs.get("socks5", None)
 
         # [txradar]
         txradar = config["txradar"]
