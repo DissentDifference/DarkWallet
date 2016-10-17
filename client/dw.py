@@ -58,6 +58,10 @@ async def restore(args):
         ]
     })
     print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
     return 0
 
 async def balance(args):
@@ -69,6 +73,10 @@ async def balance(args):
         ]
     })
     print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
     return 0
 
 async def history(args):
@@ -80,6 +88,10 @@ async def history(args):
         ]
     })
     print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
     return 0
 
 async def account(args):
@@ -90,6 +102,10 @@ async def account(args):
         ]
     })
     print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
     return 0
 
 async def dw_set(args):
@@ -105,6 +121,10 @@ async def dw_set(args):
         ]
     })
     print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
     return 0
 
 async def rm(args):
@@ -118,6 +138,10 @@ async def rm(args):
         ]
     })
     print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
     return 0
 
 async def pocket(args):
@@ -149,6 +173,10 @@ async def pocket(args):
             ]
         })
     print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
     return 0
 
 async def send(args):
@@ -165,6 +193,10 @@ async def send(args):
         ]
     })
     print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
     return 0
 
 async def recv(args):
@@ -176,6 +208,10 @@ async def recv(args):
         ]
     })
     print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
     return 0
 
 async def main():
