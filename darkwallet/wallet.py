@@ -3,10 +3,19 @@ class Wallet:
     def __init__(self, client):
         self._client = client
 
+    async def create_account(self, account, password):
+        print("create_account", account, password)
+        return None, [110]
+        #ec, height = await self._client.last_height()
+        #if ec:
+            #print("Error reading block height: %s" % ec)
+            #return ec, []
+        #return ec, [height]
+
 class WalletInterfaceCallback:
 
-    def __init__(self, client, request):
-        self._client = client
+    def __init__(self, wallet, request):
+        self._wallet = wallet
         self._request = request
 
     def initialize(self, params):
@@ -49,11 +58,8 @@ class DwCreateAccount(WalletInterfaceCallback):
         return True
 
     async def make_query(self):
-        ec, height = await self._client.last_height()
-        if ec:
-            print("Error reading block height: %s" % ec)
-            return ec, []
-        return ec, [height]
+        return await self._wallet.create_account(
+            self._account, self._password)
 
 class WalletInterface:
 
@@ -62,7 +68,6 @@ class WalletInterface:
     }
 
     def __init__(self, client):
-        self._client = client
         self._wallet = Wallet(client)
 
     @property
@@ -73,6 +78,6 @@ class WalletInterface:
         command = request["command"]
         assert command in self.commands
 
-        handler = self._handlers[command](self._client, request)
+        handler = self._handlers[command](self._wallet, request)
         return await handler.query()
 
