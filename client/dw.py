@@ -29,9 +29,10 @@ async def init(args):
         ]
     })
     print("Sending:", message)
-    #async with websockets.connect('ws://localhost:8888') as websocket:
-    #    await websockets.send(message)
-    #    response = json.loads(await websocket.recv())
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
     return 0
 
 async def restore(args):
@@ -214,7 +215,7 @@ async def main():
     parser_rm = subparsers.add_parser("rm", help="Remove an account")
     parser_rm.add_argument("account", nargs=1, metavar="ACCOUNT",
                            help="Account name")
-    parser.set_defaults(func=rm)
+    parser_rm.set_defaults(func=rm)
 
     parser_pocket = subparsers.add_parser("pocket",
         help="List, create or delete pockets")
@@ -239,7 +240,11 @@ async def main():
                              default=None, help="Pocket name")
     parser_recv.set_defaults(func=recv)
 
+    parser.set_defaults(func=None)
     args = parser.parse_args()
+    if args.func is None:
+        parser.print_help()
+        return -1
     return await args.func(args)
 
 asyncio.get_event_loop().run_until_complete(main())
