@@ -195,7 +195,6 @@ class QuerySocketHandler2(tornado.websocket.WebSocketHandler):
         self._context.spawn(self._handle_message, message)
 
     async def _handle_message(self, message):
-        print(message)
         ec, height = await self._client.last_height()
         if ec:
             print("Error reading block height: %s" % ec)

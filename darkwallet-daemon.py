@@ -1,9 +1,24 @@
 #!/usr/bin/python3
 import argparse
 import configparser
+import errno
+import os
+import shutil
 import sys
 
 import darkwallet
+
+def make_sure_dir_exists(path):
+    try:
+        os.makedirs(path)
+    except OSError as exception:
+        if exception.errno != errno.EEXIST:
+            raise
+
+def make_sure_file_exists(filename):
+    if not os.path.isfile(filename):
+        print("Initializing new darkwallet.cfg.")
+        shutil.copyfile("darkwallet.cfg", filename)
 
 class Settings:
 
@@ -11,8 +26,13 @@ class Settings:
         self._args = args
 
     def load(self):
+        self.config_path = self._args.config
+        make_sure_dir_exists(self.config_path)
+        config_filename = os.path.join(self.config_path, "darkwallet.cfg")
+        make_sure_file_exists(config_filename)
+
         config = configparser.ConfigParser()
-        config.read(self._args.config)
+        config.read(config_filename)
 
         # [main]
         main = config["main"]
@@ -41,14 +61,17 @@ class Settings:
         self.seeds = p2p.get("seeds", "tcp://85.25.198.213:8889")
         self.seeds = [seed.strip() for seed in self.seeds.split(",")]
 
+def get_default_config_path():
+    return os.path.join(os.path.expanduser("~"), ".darkwallet")
+
 def main():
     # Command line arguments
-    parser = argparse.ArgumentParser(prog="gw")
+    parser = argparse.ArgumentParser(prog="darkwallet-daemon")
     parser.add_argument("--version", "-v", action="version",
                         version="%(prog)s 2.0")
     parser.add_argument("--config", "-c", dest="config",
-                        help="Change default config file.",
-                        default="darkwallet.cfg")
+                        help="Change default config path.",
+                        default=get_default_config_path())
     parser.add_argument("--port", "-p", dest="port",
                         help="Run on the given port.",
                         default=None)
