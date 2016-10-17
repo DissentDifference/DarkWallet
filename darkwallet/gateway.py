@@ -5,6 +5,7 @@ import tornado.web
 import tornado.websocket
 
 import libbitcoin.server
+import darkwallet.wallet
 
 # Debug stuff
 import logging
@@ -15,6 +16,7 @@ class QuerySocketHandler(tornado.websocket.WebSocketHandler):
     def initialize(self, context, client, settings):
         self._context = context
         self._client = client
+        self._wallet = self.application.wallet
 
     def on_message(self, message):
         self._context.spawn(self._handle_message, message)
@@ -51,17 +53,12 @@ class QuerySocketHandler(tornado.websocket.WebSocketHandler):
 
     async def _handle_request(self, request):
         print("Request", request)
-        ec, height = await self._client.last_height()
-        if ec:
-            print("Error reading block height: %s" % ec)
-            return
-        response = {
-            "id": request["id"],
-            "error": None,
-            "result": [
-                height
-            ]
-        }
+        if request["command"] in self._wallet.commands:
+            response = await self._wallet.handle(request)
+        else:
+            logging.warning("Unhandled command. Dropping request: %s",
+                request, exc_info=True)
+            return None
         return response
 
     def queue(self, message):
@@ -90,6 +87,9 @@ class GatewayApplication(tornado.web.Application):
         client_settings.socks5 = settings.socks5
         self._client = context.Client("tcp://gateway.unsystem.net:9091",
                                       client_settings)
+
+        # Setup the modules
+        self.wallet = darkwallet.wallet.WalletInterface(self._client)
 
         handlers = [
             (r"/", QuerySocketHandler, dict(
