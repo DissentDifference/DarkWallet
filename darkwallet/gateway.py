@@ -5,7 +5,7 @@ import tornado.web
 import tornado.websocket
 
 import libbitcoin.server
-import darkwallet.wallet
+from darkwallet.wallet_interface import WalletInterface
 
 # Debug stuff
 import logging
@@ -89,7 +89,7 @@ class GatewayApplication(tornado.web.Application):
                                       client_settings)
 
         # Setup the modules
-        self.wallet = darkwallet.wallet.WalletInterface(self._client)
+        self.wallet = WalletInterface(self._client)
 
         handlers = [
             (r"/", QuerySocketHandler, dict(
