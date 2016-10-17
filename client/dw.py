@@ -13,6 +13,10 @@ def enter_confirmed_password():
         return None
     return password
 
+def create_random_id():
+    MAX_UINT32 = 4294967295
+    return random.randint(0, MAX_UINT32)
+
 async def init(args):
     assert args.account
     account = args.account[0]
@@ -22,7 +26,7 @@ async def init(args):
         return -1
     message = json.dumps({
         "command": "dw_create_account",
-        "id": 1,
+        "id": create_random_id(),
         "params": [
             account,
             password
@@ -45,7 +49,7 @@ async def restore(args):
         return -1
     message = json.dumps({
         "command": "dw_restore_account",
-        "id": 1,
+        "id": create_random_id(),
         "params": [
             account,
             brainwallet,
@@ -58,7 +62,7 @@ async def restore(args):
 async def balance(args):
     message = json.dumps({
         "command": "dw_balance",
-        "id": 1,
+        "id": create_random_id(),
         "params": [
             args.pocket
         ]
@@ -69,7 +73,7 @@ async def balance(args):
 async def history(args):
     message = json.dumps({
         "command": "dw_history",
-        "id": 1,
+        "id": create_random_id(),
         "params": [
             args.pocket
         ]
@@ -80,7 +84,7 @@ async def history(args):
 async def account(args):
     message = json.dumps({
         "command": "dw_list_accounts",
-        "id": 1,
+        "id": create_random_id(),
         "params": [
         ]
     })
@@ -93,7 +97,7 @@ async def dw_set(args):
     password = getpass.getpass()
     message = json.dumps({
         "command": "dw_set_account",
-        "id": 1,
+        "id": create_random_id(),
         "params": [
             account,
             password
@@ -107,7 +111,7 @@ async def rm(args):
     account = args.account[0]
     message = json.dumps({
         "command": "dw_delete_account",
-        "id": 1,
+        "id": create_random_id(),
         "params": [
             account
         ]
@@ -123,14 +127,14 @@ async def pocket(args):
     if args.pocket is None:
         message = json.dumps({
             "command": "dw_list_pockets",
-            "id": 1,
+            "id": create_random_id(),
             "params": [
             ]
         })
     elif args.delete:
         message = json.dumps({
             "command": "dw_delete_pocket",
-            "id": 1,
+            "id": create_random_id(),
             "params": [
                 args.pocket
             ]
@@ -138,7 +142,7 @@ async def pocket(args):
     else:
         message = json.dumps({
             "command": "dw_create_pocket",
-            "id": 1,
+            "id": create_random_id(),
             "params": [
                 args.pocket
             ]
@@ -153,7 +157,7 @@ async def send(args):
     amount = args.amount[0]
     message = json.dumps({
         "command": "dw_send",
-        "id": 1,
+        "id": create_random_id(),
         "params": [
             args.pocket,
             [(address, amount)]
@@ -165,7 +169,7 @@ async def send(args):
 async def recv(args):
     message = json.dumps({
         "command": "dw_receive",
-        "id": 1,
+        "id": create_random_id(),
         "params": [
             args.pocket
         ]
