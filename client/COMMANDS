@@ -1,0 +1,15 @@
+~/.darkwallet.cfg (runs over Tor)
+
+dw init ACCOUNT                Creates new wallet
+dw restore ACCOUNT             Restore wallet
+dw balance <POCKET>
+dw history <POCKET>
+dw account		Lists accounts
+dw set ACCOUNT		Switch to ACCOUNT
+dw rm ACCOUNT
+dw pocket               Lists pockets
+dw pocket POCKET        Create account
+dw pocket -d POCKET     Delete account
+dw send <POCKET> ADDRESS:AMOUNT ...
+dw recv <POCKET>
+

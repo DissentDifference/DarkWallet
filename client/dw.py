@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+import argparse
 import asyncio
 import json
 import sys
@@ -204,6 +206,67 @@ async def hello():
         #await test_fetch_stealth(websocket)
         #await test_ticker(websocket)
         #await test_broadcast(websocket)
+
+def main():
+    # Command line arguments
+    parser = argparse.ArgumentParser(prog="dw")
+    parser.add_argument("--version", "-v", action="version",
+                        version="%(prog)s 2.0")
+    parser.add_argument("--port", "-p", dest="port",
+                        help="Connect to daemon on the given port.",
+                        default=None)
+    subparsers = parser.add_subparsers(help="sub-command help")
+
+    parser_init = subparsers.add_parser("init", help="Create new account.")
+    parser_init.add_argument("account", nargs=1, metavar="ACCOUNT",
+                             help="Account name")
+
+    parser_restore = subparsers.add_parser("restore",
+                                           help="Restore an account.")
+    parser_restore.add_argument("account", nargs=1, metavar="ACCOUNT",
+                                help="Account name")
+
+    parser_balance = subparsers.add_parser("balance", help="Show balance")
+    parser_balance.add_argument("pocket", nargs="?", metavar="POCKET",
+                                default=None, help="Pocket name")
+
+    parser_history = subparsers.add_parser("history", help="Show history")
+    parser_history.add_argument("pocket", nargs="?", metavar="POCKET",
+                                default=None, help="Pocket name")
+
+    parser_account = subparsers.add_parser("account", help="List accounts")
+
+    parser_set = subparsers.add_parser("set", help="Switch to an account")
+    parser_set.add_argument("account", nargs=1, metavar="ACCOUNT",
+                            help="Account name")
+
+    parser_rm = subparsers.add_parser("rm", help="Remove an account")
+    parser_rm.add_argument("account", nargs=1, metavar="ACCOUNT",
+                           help="Account name")
+
+    parser_pocket = subparsers.add_parser("pocket",
+        help="List, create or delete pockets")
+    parser_pocket.add_argument("pocket", nargs="?", metavar="POCKET",
+                               default=None, help="Pocket name")
+    parser_pocket.add_argument("--delete", "-d", dest="delete", nargs=1,
+                               help="Delete a pocket")
+
+    parser_send = subparsers.add_parser("send", help="Send Bitcoins")
+    parser_send.add_argument("pocket", nargs="?", metavar="POCKET",
+                             default=None, help="Pocket name")
+    parser_send.add_argument("destinations", nargs="+", metavar="DESTINATIONS",
+                             help="Destinations for send in the format of " \
+                                  "ADDRESS:AMOUNT")
+
+    parser_recv = subparsers.add_parser("recv", help="Receive Bitcoins")
+    parser_recv.add_argument("pocket", nargs="?", metavar="POCKET",
+                             default=None, help="Pocket name")
+
+    args = parser.parse_args()
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
 
 asyncio.get_event_loop().run_until_complete(hello())
 
