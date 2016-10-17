@@ -89,7 +89,7 @@ class GatewayApplication(tornado.web.Application):
                                       client_settings)
 
         # Setup the modules
-        self.wallet = WalletInterface(self._client)
+        self.wallet = WalletInterface(settings, self._client)
 
         handlers = [
             (r"/", QuerySocketHandler, dict(

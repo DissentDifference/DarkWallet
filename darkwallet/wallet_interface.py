@@ -182,8 +182,8 @@ class WalletInterface:
         "dw_receive":           DwReceive
     }
 
-    def __init__(self, client):
-        self._wallet = darkwallet.wallet.Wallet(client)
+    def __init__(self, settings, client):
+        self._wallet = darkwallet.wallet.Wallet(settings, client)
 
     @property
     def commands(self):
