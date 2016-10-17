@@ -11,6 +11,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 class QuerySocketHandler(tornado.websocket.WebSocketHandler):
+
     def initialize(self, context, client, settings):
         self._context = context
         self._client = client
@@ -18,20 +19,66 @@ class QuerySocketHandler(tornado.websocket.WebSocketHandler):
     def on_message(self, message):
         self._context.spawn(self._handle_message, message)
 
+    def _check_request(self, request):
+        # {
+        #   "command": ...
+        #   "id": ...
+        #   "params": [...]
+        # }
+        return ("command" in request) and ("id" in request) and \
+            ("params" in request and type(request["params"]) == list)
+
     async def _handle_message(self, message):
-        print(message)
+        try:
+            request = json.loads(message)
+        except:
+            logging.error("Error decoding message: %s", message, exc_info=True)
+            self.close()
+            return
+
+        # Check request is correctly formed.
+        if not self._check_request(request):
+            logging.error("Malformed request: %s", request, exc_info=True)
+            self.close()
+            return
+
+        response = await self._handle_request(request)
+        if response is None:
+            self.close()
+            return
+
+        self.queue(response)
+
+    async def _handle_request(self, request):
+        print("Request", request)
         ec, height = await self._client.last_height()
         if ec:
             print("Error reading block height: %s" % ec)
             return
-        result = {
-            "id": 1,
+        response = {
+            "id": request["id"],
             "error": None,
             "result": [
                 height
             ]
         }
-        self.write_message(json.dumps(result))
+        return response
+
+    def queue(self, message):
+        # Calling write_message on the socket is not thread safe
+        self._context.spawn(self._send, message)
+
+    def _send(self, message):
+        print("Response", message)
+        try:
+            self.write_message(message)
+        except tornado.websocket.WebSocketClosedError:
+            logging.warning("Dropping response to closed socket: %s",
+                            message, exc_info=True)
+        except Exception as e:
+            print("Error sending:", str(e))
+            traceback.print_exc()
+            print("Message:", message.keys())
 
 class GatewayApplication(tornado.web.Application):
 
