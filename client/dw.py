@@ -207,6 +207,68 @@ async def hello():
         #await test_ticker(websocket)
         #await test_broadcast(websocket)
 
+def init(args):
+    assert args.account
+    account = args.account[0]
+    print("init", account)
+    return 0
+
+def restore(args):
+    assert args.account
+    account = args.account[0]
+    print("restore", account)
+    return 0
+
+def balance(args):
+    print(args.pocket)
+    print("balance")
+    return 0
+
+def history(args):
+    print(args.pocket)
+    print("history")
+    return 0
+
+def account(args):
+    print("account")
+    return 0
+
+def dw_set(args):
+    assert args.account
+    account = args.account[0]
+    print("set")
+    return 0
+
+def rm(args):
+    assert args.account
+    account = args.account[0]
+    print("rm")
+    return 0
+
+def pocket(args):
+    if args.pocket is None and args.delete:
+        print("Need a pocket specified when deleting a pocket.",
+              file=sys.stderr)
+        return -1
+    print("pocket")
+    return 0
+
+def send(args):
+    print(args.pocket)
+    assert args.address
+    assert args.amount
+    address = args.address[0]
+    amount = args.amount[0]
+    print(address)
+    print(amount)
+    print("send")
+    return 0
+
+def recv(args):
+    print(args.pocket)
+    print("recv")
+    return 0
+
 def main():
     # Command line arguments
     parser = argparse.ArgumentParser(prog="dw")
@@ -220,50 +282,62 @@ def main():
     parser_init = subparsers.add_parser("init", help="Create new account.")
     parser_init.add_argument("account", nargs=1, metavar="ACCOUNT",
                              help="Account name")
+    parser_init.set_defaults(func=init)
 
     parser_restore = subparsers.add_parser("restore",
                                            help="Restore an account.")
     parser_restore.add_argument("account", nargs=1, metavar="ACCOUNT",
                                 help="Account name")
+    parser_restore.set_defaults(func=restore)
 
     parser_balance = subparsers.add_parser("balance", help="Show balance")
     parser_balance.add_argument("pocket", nargs="?", metavar="POCKET",
                                 default=None, help="Pocket name")
+    parser_balance.set_defaults(func=balance)
 
     parser_history = subparsers.add_parser("history", help="Show history")
     parser_history.add_argument("pocket", nargs="?", metavar="POCKET",
                                 default=None, help="Pocket name")
+    parser_history.set_defaults(func=history)
 
     parser_account = subparsers.add_parser("account", help="List accounts")
+    parser_account.set_defaults(func=account)
 
     parser_set = subparsers.add_parser("set", help="Switch to an account")
     parser_set.add_argument("account", nargs=1, metavar="ACCOUNT",
                             help="Account name")
+    parser_set.set_defaults(func=dw_set)
 
     parser_rm = subparsers.add_parser("rm", help="Remove an account")
     parser_rm.add_argument("account", nargs=1, metavar="ACCOUNT",
                            help="Account name")
+    parser.set_defaults(func=rm)
 
     parser_pocket = subparsers.add_parser("pocket",
         help="List, create or delete pockets")
     parser_pocket.add_argument("pocket", nargs="?", metavar="POCKET",
                                default=None, help="Pocket name")
-    parser_pocket.add_argument("--delete", "-d", dest="delete", nargs=1,
-                               help="Delete a pocket")
+    parser_pocket.add_argument("--delete", "-d", dest="delete",
+        action="store_const", const=True, default=False,
+        help="Delete a pocket")
+    parser_pocket.set_defaults(func=pocket)
 
     parser_send = subparsers.add_parser("send", help="Send Bitcoins")
     parser_send.add_argument("pocket", nargs="?", metavar="POCKET",
-                             default=None, help="Pocket name")
-    parser_send.add_argument("destinations", nargs="+", metavar="DESTINATIONS",
-                             help="Destinations for send in the format of " \
-                                  "ADDRESS:AMOUNT")
+                             default=None, help="Pocket name to send from")
+    parser_send.add_argument("address", nargs=1, metavar="ADDRESS",
+                             help="Address for send in the format")
+    parser_send.add_argument("amount", nargs=1, metavar="AMOUNT",
+                             help="Amount for send in the format")
+    parser_send.set_defaults(func=send)
 
     parser_recv = subparsers.add_parser("recv", help="Receive Bitcoins")
     parser_recv.add_argument("pocket", nargs="?", metavar="POCKET",
                              default=None, help="Pocket name")
+    parser_recv.set_defaults(func=recv)
 
     args = parser.parse_args()
-    return 0
+    return args.func(args)
 
 if __name__ == "__main__":
     sys.exit(main())
