@@ -102,6 +102,20 @@ class Account:
         self.save()
         return None
 
+    @property
+    def all_addresses(self):
+        all_addresses = []
+        for pocket in self._pockets.values():
+            all_addresses.extend(pocket.addresses)
+        return all_addresses
+
+    def receive(self, pocket_name=None):
+        if pocket_name is not None and pocket_name not in self._pockets:
+            return ErrorCode.not_found, []
+        if pocket_name is None:
+            return None, self.all_addresses
+        return None, self._pockets[pocket_name].addresses
+
 class Pocket:
 
     def __init__(self, main_key, index, settings, client):
@@ -133,6 +147,16 @@ class Pocket:
             "index": self._index,
             "keys": keys
         }
+
+    @property
+    def addresses(self):
+        addresses = []
+        for key in self._keys:
+            secret = key.secret()
+            address = bc.PaymentAddress.from_secret(secret)
+            assert address.is_valid()
+            addresses.append(str(address))
+        return addresses
 
 def create_brainwallet_seed():
     entropy = os.urandom(1024)
@@ -252,5 +276,6 @@ class Wallet:
         if self._account is None:
             return ErrorCode.no_active_account_set, []
         print("receive", pocket)
-        return None, []
+        ec, addresses = self._account.receive(pocket)
+        return ec, [addresses]
 
