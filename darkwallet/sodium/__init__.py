@@ -63,7 +63,8 @@ def decrypt(salt, nonce, ciphertext, password):
     retcode = lib.crypto_aead_chacha20poly1305_ietf_decrypt(
         decrypted, decrypted_len, ffi.NULL, ciphertext, len(ciphertext),
         ffi.NULL, 0, nonce, key)
-    assert retcode == 0
+    if retcode != 0:
+        return None
 
     return ffi.buffer(decrypted, decrypted_len[0])[:]
 

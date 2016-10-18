@@ -1,24 +1,66 @@
+import enum
+import json
 import os
 
 import libbitcoin.server
 import darkwallet.util
 from libbitcoin import bc
+from darkwallet import sodium
+
+def write_json(filename, json_object):
+    open(filename, "w").write(json.dumps(json_object))
+
+def read_json(filename):
+    return json.loads(open(filename).read())
+
+class ErrorCode(enum.Enum):
+
+    wrong_password = 1
+    invalid_brainwallet = 2
 
 class Account:
 
     def __init__(self, name, filename, password, settings, client):
         self.name = name
         self._filename = filename
-        self._password = password
+        self._password = bytes(password, "utf-8")
 
     def set_seed(self, seed):
         self._seed = seed
 
     def save(self):
-        pass
+        wallet_info = self._save_values()
+        message = bytes(json.dumps(wallet_info), "utf-8")
+        salt, nonce, ciphertext = sodium.encrypt(message, self._password)
+        encrypted_wallet_info = {
+            "encrypted_wallet": ciphertext.hex(),
+            "salt": salt.hex(),
+            "nonce": nonce.hex()
+        }
+        write_json(self._filename, encrypted_wallet_info)
 
     def load(self):
-        pass
+        encrypted_wallet_info = read_json(self._filename)
+        salt, nonce, ciphertext = (
+            bytes.fromhex(encrypted_wallet_info["salt"]),
+            bytes.fromhex(encrypted_wallet_info["nonce"]),
+            bytes.fromhex(encrypted_wallet_info["encrypted_wallet"])
+        )
+        message = sodium.decrypt(salt, nonce, ciphertext, self._password)
+        if message is None:
+            return False
+        message = str(message, "ascii")
+        wallet_info = json.loads(message)
+        self._load_values(wallet_info)
+        return True
+
+    def _save_values(self):
+        return {
+            "seed": self._seed.encode_base16()
+        }
+
+    def _load_values(self, wallet_info):
+        self._seed = bc.LongHash.from_string(wallet_info["seed"])
 
 def create_brainwallet_seed():
     entropy = os.urandom(1024)
@@ -31,7 +73,7 @@ class Wallet:
         self._client = client
 
         self._init_accounts_path()
-        self._accounts = darkwallet.util.list_files(self.accounts_path)
+        self._account_names = darkwallet.util.list_files(self.accounts_path)
         self._account = None
 
     @property
@@ -46,7 +88,7 @@ class Wallet:
 
     async def create_account(self, account_name, password):
         print("create_account", account_name, password)
-        if account_name in self._accounts:
+        if account_name in self._account_names:
             return libbitcoin.server.ErrorCode.duplicate, []
 
         # Create new seed
@@ -59,7 +101,7 @@ class Wallet:
                                 self._settings, self._client)
         self._account.set_seed(seed)
         self._account.save()
-        self._accounts.append(account_name)
+        self._account_names.append(account_name)
 
         return None, []
 
@@ -67,6 +109,8 @@ class Wallet:
         print("restore_account", account, brainwallet, password)
         # Create new seed
         wordlist = brainwallet.strip().split(" ")
+        if not bc.validate_mnemonic(wordlist):
+            return ErrorCode.invalid_brainwallet, []
         seed = bc.decode_mnemonic(wordlist)
 
         account_filename = self.account_filename(account_name)
@@ -75,7 +119,7 @@ class Wallet:
                                 self._settings, self._client)
         self._account.set_seed(seed)
         self._account.save()
-        self._accounts.append(account_name)
+        self._account_names.append(account_name)
         return None, []
 
     async def balance(self, pocket):
@@ -87,23 +131,26 @@ class Wallet:
         return None, []
 
     async def list_accounts(self):
-        return None, [self._accounts.keys()]
+        account_name = None if self._account is None else self._account.name
+        return None, [account_name, self._account_names]
 
     async def set_account(self, account_name, password):
-        if account_name in self._accounts:
+        if not account_name in self._account_names:
             return libbitcoin.server.ErrorCode.not_found, []
+        account_filename = self.account_filename(account_name)
         # Init current account object
         self._account = Account(account_name, account_filename, password,
                                 self._settings, self._client)
-        self._account.load()
+        if not self._account.load():
+            return ErrorCode.wrong_password, []
         return None, []
 
     async def delete_account(self, account_name):
-        if account_name in self._accounts:
+        if not account_name in self._account_names:
             return libbitcoin.server.ErrorCode.not_found, []
         if self._account.name == account_name:
             self._account = None
-        del self._accounts[account_name]
+        del self._account_names[account_name]
         account_filename = self.account_filename(account_name)
         os.remove(account_filename)
         return None, []
