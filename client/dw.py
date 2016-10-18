@@ -281,6 +281,9 @@ async def main():
                              default=None, help="Pocket name")
     parser_recv.set_defaults(func=recv)
 
+    parser_help = subparsers.add_parser("help", help="Show help")
+    parser_recv.set_defaults(func=None)
+
     parser.set_defaults(func=None)
     args = parser.parse_args()
     if args.func is None:
