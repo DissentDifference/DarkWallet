@@ -19,6 +19,7 @@ class ErrorCode(enum.Enum):
     invalid_brainwallet = 2
     no_active_account_set = 3
     duplicate = 4
+    not_found = 5
 
 class Account:
 
@@ -91,6 +92,13 @@ class Account:
         pocket = Pocket(key, index, self._settings, self._client)
         pocket.initialize()
         self._pockets[pocket_name] = pocket
+        self.save()
+        return None
+
+    def delete_pocket(self, pocket_name):
+        if pocket_name not in self._pockets:
+            return ErrorCode.not_found
+        del self._pockets[pocket_name]
         self.save()
         return None
 
@@ -200,7 +208,7 @@ class Wallet:
 
     async def set_account(self, account_name, password):
         if not account_name in self._account_names:
-            return libbitcoin.server.ErrorCode.not_found, []
+            return ErrorCode.not_found, []
         account_filename = self.account_filename(account_name)
         # Init current account object
         self._account = Account(account_name, account_filename, password,
@@ -211,7 +219,7 @@ class Wallet:
 
     async def delete_account(self, account_name):
         if not account_name in self._account_names:
-            return libbitcoin.server.ErrorCode.not_found, []
+            return ErrorCode.not_found, []
         if self._account.name == account_name:
             self._account = None
         del self._account_names[account_name]
@@ -232,8 +240,7 @@ class Wallet:
     async def delete_pocket(self, pocket):
         if self._account is None:
             return ErrorCode.no_active_account_set, []
-        print("delete_pocket", pocket)
-        return None, []
+        return self._account.delete_pocket(pocket), []
 
     async def send(self, dests, from_pocket=None):
         if self._account is None:
