@@ -42,24 +42,14 @@ class Settings:
         if self.port is None:
             self.port = int(main.get("port", 8888))
 
+        # [wallet]
+        wallet = config["wallet"]
+        self.gap_limit = int(wallet.get("gap_limit", 5))
+        self.master_pocket_name = wallet.get("master-pocket-name", "master")
+
         # [bs]
-        bs = config["bs"]
+        bs = config["blockchain-server"]
         self.bs_url = bs.get("url", "tcp://gateway.unsystem.net:9091")
         self.bs_query_expire_time = int(bs.get("query-expire-time", 200))
         self.socks5 = bs.get("socks5", None)
-
-        # [txradar]
-        txradar = config["txradar"]
-        self.txradar_url = txradar.get("url", "tcp://localhost:7678")
-        self.txradar_watch_expire_time = \
-            int(txradar.get("watch-expire-time", 200))
-        self.txradar_cleanup_timeout = int(txradar.get("cleanup-timeout", 200))
-
-        # [p2p]
-        p2p = config["p2p"]
-        self.p2p_port = int(p2p.get("p2p-port", 8889))
-        self.external_ip = p2p.get("external-ip", "85.25.198.211")
-        self.internal_ip = p2p.get("internal-ip", "192.168.1.10")
-        self.seeds = p2p.get("seeds", "tcp://85.25.198.213:8889")
-        self.seeds = [seed.strip() for seed in self.seeds.split(",")]
 
