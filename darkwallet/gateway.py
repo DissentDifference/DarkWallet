@@ -1,5 +1,6 @@
 import json
 import random
+import signal
 import tornado.options
 import tornado.web
 import tornado.websocket
@@ -106,7 +107,14 @@ class GatewayApplication(tornado.web.Application):
 
 def start(settings):
     context = libbitcoin.server.TornadoContext()
+    # Handle CTRL-C
+    def signal_handler(signum, frame):
+        print("Stopping darkwallet-daemon...")
+        context.stop()
+    signal.signal(signal.SIGINT, signal_handler)
+    # Create main application
     app = GatewayApplication(context, settings)
     app.start_listen()
+    # Run loop
     context.start()
 
