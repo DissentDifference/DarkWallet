@@ -14,3 +14,7 @@ def make_sure_file_exists(filename):
         print("Initializing new darkwallet.cfg.")
         shutil.copyfile("darkwallet.cfg", filename)
 
+def list_files(path):
+    return [filename for filename in os.listdir(path)
+            if os.path.isfile(os.path.join(path, filename))]
+
