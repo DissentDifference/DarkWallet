@@ -17,6 +17,8 @@ class ErrorCode(enum.Enum):
 
     wrong_password = 1
     invalid_brainwallet = 2
+    no_active_account_set = 3
+    duplicate = 4
 
 class Account:
 
@@ -24,12 +26,18 @@ class Account:
         self.name = name
         self._filename = filename
         self._password = bytes(password, "utf-8")
+        self._pockets = {}
+        self._settings = settings
+        self._client = client
 
     def set_seed(self, seed):
         self._seed = seed
+        self._root_key = bc.HdPrivate.from_seed(self._seed,
+                                                bc.HdPrivate.mainnet)
 
     def save(self):
         wallet_info = self._save_values()
+        print("Saving:", json.dumps(wallet_info, indent=2))
         message = bytes(json.dumps(wallet_info), "utf-8")
         salt, nonce, ciphertext = sodium.encrypt(message, self._password)
         encrypted_wallet_info = {
@@ -51,16 +59,72 @@ class Account:
             return False
         message = str(message, "ascii")
         wallet_info = json.loads(message)
+        print("Loading:", json.dumps(wallet_info, indent=2))
         self._load_values(wallet_info)
         return True
 
     def _save_values(self):
+        pockets = {}
+        for pocket_name, pocket in self._pockets.items():
+            pockets[pocket_name] = pocket.serialize()
         return {
-            "seed": self._seed.encode_base16()
+            "seed": self._seed.hex(),
+            "pockets": pockets
         }
 
     def _load_values(self, wallet_info):
-        self._seed = bc.LongHash.from_string(wallet_info["seed"])
+        seed = bytes.fromhex(wallet_info["seed"])
+        self.set_seed(seed)
+        for pocket_name, pocket_values in wallet_info["pockets"].items():
+            pocket = Pocket.from_json(pocket_values,
+                                      self._settings, self._client)
+            self._pockets[pocket_name] = pocket
+
+    def list_pockets(self):
+        return list(self._pockets.keys())
+
+    def create_pocket(self, pocket_name):
+        if pocket_name in self._pockets:
+            return ErrorCode.duplicate
+        index = len(self._pockets)
+        key = self._root_key.derive_private(index + bc.hd_first_hardened_key)
+        pocket = Pocket(key, index, self._settings, self._client)
+        pocket.initialize()
+        self._pockets[pocket_name] = pocket
+        self.save()
+        return None
+
+class Pocket:
+
+    def __init__(self, main_key, index, settings, client):
+        self._main_key = main_key
+        self._index = index
+        self._settings = settings
+        self._client = client
+
+    @classmethod
+    def from_json(cls, values, settings, client):
+        key = bc.HdPrivate.from_string(values["main_key"])
+        index = values["index"]
+        pocket = cls(key, index, settings, client)
+        pocket._keys = [bc.HdPrivate.from_string(key_str)
+                        for key_str in values["keys"]]
+        return pocket
+
+    def initialize(self):
+        # Generate gap_limit (default is 5) new keys
+        self._keys = [
+            self._main_key.derive_private(i + bc.hd_first_hardened_key)
+            for i in range(5)
+        ]
+
+    def serialize(self):
+        keys = [key.encoded() for key in self._keys]
+        return {
+            "main_key": self._main_key.encoded(),
+            "index": self._index,
+            "keys": keys
+        }
 
 def create_brainwallet_seed():
     entropy = os.urandom(1024)
@@ -89,11 +153,11 @@ class Wallet:
     async def create_account(self, account_name, password):
         print("create_account", account_name, password)
         if account_name in self._account_names:
-            return libbitcoin.server.ErrorCode.duplicate, []
+            return ErrorCode.duplicate, []
 
         # Create new seed
         wordlist = create_brainwallet_seed()
-        seed = bc.decode_mnemonic(wordlist)
+        seed = bc.decode_mnemonic(wordlist).data
 
         account_filename = self.account_filename(account_name)
         # Init current account object
@@ -111,7 +175,7 @@ class Wallet:
         wordlist = brainwallet.strip().split(" ")
         if not bc.validate_mnemonic(wordlist):
             return ErrorCode.invalid_brainwallet, []
-        seed = bc.decode_mnemonic(wordlist)
+        seed = bc.decode_mnemonic(wordlist).data
 
         account_filename = self.account_filename(account_name)
         # Init current account object
@@ -156,22 +220,30 @@ class Wallet:
         return None, []
 
     async def list_pockets(self):
-        print("list_pockets")
-        return None, []
+        if self._account is None:
+            return ErrorCode.no_active_account_set, []
+        return None, [self._account.list_pockets()]
 
     async def create_pocket(self, pocket):
-        print("create_pocket", pocket)
-        return None, []
+        if self._account is None:
+            return ErrorCode.no_active_account_set, []
+        return self._account.create_pocket(pocket), []
 
     async def delete_pocket(self, pocket):
+        if self._account is None:
+            return ErrorCode.no_active_account_set, []
         print("delete_pocket", pocket)
         return None, []
 
     async def send(self, dests, from_pocket=None):
+        if self._account is None:
+            return ErrorCode.no_active_account_set, []
         print("send", dests, from_pocket)
         return None, []
 
     async def receive(self, pocket):
+        if self._account is None:
+            return ErrorCode.no_active_account_set, []
         print("receive", pocket)
         return None, []
 
