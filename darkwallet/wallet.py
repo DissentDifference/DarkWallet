@@ -23,11 +23,12 @@ class ErrorCode(enum.Enum):
 
 class Account:
 
-    def __init__(self, name, filename, password, settings, client):
+    def __init__(self, name, filename, password, context, settings, client):
         self.name = name
         self._filename = filename
         self._password = bytes(password, "utf-8")
         self._pockets = {}
+        self._context = context
         self._settings = settings
         self._client = client
 
@@ -81,6 +82,10 @@ class Account:
                                       self._settings, self._client)
             self._pockets[pocket_name] = pocket
 
+    def spawn_scan(self):
+        for pocket in self._pockets.values():
+            self._context.spawn(pocket.scan)
+
     def list_pockets(self):
         return list(self._pockets.keys())
 
@@ -123,6 +128,7 @@ class Pocket:
         self._index = index
         self._settings = settings
         self._client = client
+        self._history = {}
 
     @classmethod
     def from_json(cls, values, settings, client):
@@ -137,7 +143,7 @@ class Pocket:
         # Generate gap_limit (default is 5) new keys
         self._keys = [
             self._main_key.derive_private(i + bc.hd_first_hardened_key)
-            for i in range(5)
+            for i in range(self._settings.gap_limit)
         ]
 
     def serialize(self):
@@ -158,13 +164,25 @@ class Pocket:
             addresses.append(str(address))
         return addresses
 
+    async def scan(self):
+        for address in self.addresses:
+            await self._process(address)
+
+    async def _process(self, address):
+        ec, history = await self._client.history(address)
+        if ec:
+            print("Couldn't fetch history:", ec, file=sys.stderr)
+            return
+        self._history[address] = history
+
 def create_brainwallet_seed():
     entropy = os.urandom(1024)
     return bc.create_mnemonic(entropy)
 
 class Wallet:
 
-    def __init__(self, settings, client):
+    def __init__(self, context, settings, client):
+        self._context = context
         self._settings = settings
         self._client = client
 
@@ -194,7 +212,7 @@ class Wallet:
         account_filename = self.account_filename(account_name)
         # Init current account object
         self._account = Account(account_name, account_filename, password,
-                                self._settings, self._client)
+                                self._context, self._settings, self._client)
         self._account.set_seed(seed)
         self._account.save()
         self._account_names.append(account_name)
@@ -212,7 +230,7 @@ class Wallet:
         account_filename = self.account_filename(account_name)
         # Init current account object
         self._account = Account(account_name, account_filename, password,
-                                self._settings, self._client)
+                                self._context, self._settings, self._client)
         self._account.set_seed(seed)
         self._account.save()
         self._account_names.append(account_name)
@@ -236,9 +254,10 @@ class Wallet:
         account_filename = self.account_filename(account_name)
         # Init current account object
         self._account = Account(account_name, account_filename, password,
-                                self._settings, self._client)
+                                self._context, self._settings, self._client)
         if not self._account.load():
             return ErrorCode.wrong_password, []
+        self._account.spawn_scan()
         return None, []
 
     async def delete_account(self, account_name):
