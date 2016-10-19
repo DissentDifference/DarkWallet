@@ -355,7 +355,7 @@ class Wallet:
         if self._account is None:
             return ErrorCode.no_active_account_set, []
         ec, height = await self._account.get_height()
-        return ec, height
+        return ec, [height]
 
     async def get_setting(self, name):
         try:
