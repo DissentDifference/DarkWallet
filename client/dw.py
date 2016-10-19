@@ -230,6 +230,32 @@ async def get_height(args):
     print(response)
     return 0
 
+async def setting(args):
+    name = args.name[0]
+    value = args.value
+    if value is None:
+        message = json.dumps({
+            "command": "dw_get_setting",
+            "id": create_random_id(),
+            "params": [
+                name
+            ]
+        })
+    else:
+        message = json.dumps({
+            "command": "dw_set_setting",
+            "id": create_random_id(),
+            "params": [
+                name,
+                value
+            ]
+        })
+    print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
+
 async def main():
     # Command line arguments
     parser = argparse.ArgumentParser(prog="dw")
@@ -306,6 +332,14 @@ async def main():
     parser_get_height = subparsers.add_parser("get_height",
         help="Get height of the last block")
     parser_get_height.set_defaults(func=get_height)
+
+    parser_setting = subparsers.add_parser("setting",
+                                           help="Get and set a setting")
+    parser_setting.add_argument("name", nargs=1, metavar="NAME",
+                                default=None, help="Setting name")
+    parser_setting.add_argument("value", nargs="?", metavar="VALUE",
+                                default=None, help="Setting value")
+    parser_setting.set_defaults(func=setting)
 
     parser_help = subparsers.add_parser("help", help="Show help")
     parser_help.set_defaults(func=None)

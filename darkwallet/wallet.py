@@ -259,7 +259,7 @@ class Wallet:
         self._account_names.append(account_name)
 
         # Create master pocket
-        self._account.create_pocket("master")
+        self._account.create_pocket(self._settings.master_pocket_name)
 
         return None, []
 
@@ -283,7 +283,7 @@ class Wallet:
         self._account_names.append(account_name)
 
         # Create master pocket
-        self._account.create_pocket("master")
+        self._account.create_pocket(self._settings.master_pocket_name)
 
         return None, []
 
@@ -356,4 +356,19 @@ class Wallet:
             return ErrorCode.no_active_account_set, []
         ec, height = await self._account.get_height()
         return ec, height
+
+    async def get_setting(self, name):
+        try:
+            value = getattr(self._settings, name)
+        except AttributeError:
+            return ErrorCode.not_found, []
+        return None, [value]
+
+    async def set_setting(self, name, value):
+        try:
+            setattr(self._settings, name, value)
+        except AttributeError:
+            return ErrorCode.not_found, []
+        self._settings.save()
+        return None, []
 

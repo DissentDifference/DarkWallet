@@ -29,11 +29,11 @@ class Settings:
     def _load(self, args):
         self.config_path = args.config
         darkwallet.util.make_sure_dir_exists(self.config_path)
-        config_filename = os.path.join(self.config_path, "darkwallet.cfg")
-        darkwallet.util.make_sure_file_exists(config_filename)
+        self.config_filename = os.path.join(self.config_path, "darkwallet.cfg")
+        darkwallet.util.make_sure_file_exists(self.config_filename)
 
         config = configparser.ConfigParser()
-        config.read(config_filename)
+        config.read(self.config_filename)
 
         # [main]
         main = config["main"]
@@ -44,7 +44,7 @@ class Settings:
 
         # [wallet]
         wallet = config["wallet"]
-        self.gap_limit = int(wallet.get("gap_limit", 5))
+        self.gap_limit = int(wallet.get("gap-limit", 5))
         self.master_pocket_name = wallet.get("master-pocket-name", "master")
 
         # [bs]
@@ -54,4 +54,23 @@ class Settings:
             "tcp://testnet.unsystem.net:9091")
         self.query_expire_time = int(bs.get("query-expire-time", 200))
         self.socks5 = bs.get("socks5", None)
+
+    def save(self):
+        config = configparser.ConfigParser()
+        config["main"] = {
+            "port": self.port
+        }
+        config["wallet"] = {
+            "gap-limit": self.gap_limit,
+            "master-pocket-name": self.master_pocket_name
+        }
+        config["blockchain-server"] = {
+            "url": self.url,
+            "testnet-url": self.testnet_url,
+            "query-expire-time": self.query_expire_time
+        }
+        if self.socks5:
+            config["blockchain-server"]["socks5"] = self.socks5
+        with open(self.config_filename, "w") as configfile:
+            config.write(configfile)
 
