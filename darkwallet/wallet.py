@@ -23,19 +23,21 @@ class ErrorCode(enum.Enum):
 
 class Account:
 
-    def __init__(self, name, filename, password, context, settings, client):
+    def __init__(self, name, filename, password, context, settings):
         self.name = name
         self._filename = filename
         self._password = bytes(password, "utf-8")
         self._pockets = {}
         self._context = context
         self._settings = settings
-        self._client = client
 
-    def set_seed(self, seed):
+    def set_seed(self, seed, testnet):
         self._seed = seed
-        self._root_key = bc.HdPrivate.from_seed(self._seed,
-                                                bc.HdPrivate.mainnet)
+        self.testnet = testnet
+        prefixes = bc.HdPrivate.mainnet
+        if self.testnet:
+            prefixes = bc.HdPrivate.testnet
+        self._root_key = bc.HdPrivate.from_seed(self._seed, prefixes)
 
     def save(self):
         wallet_info = self._save_values()
@@ -71,16 +73,26 @@ class Account:
             pockets[pocket_name] = pocket.serialize()
         return {
             "seed": self._seed.hex(),
-            "pockets": pockets
+            "pockets": pockets,
+            "testnet": self.testnet
         }
 
     def _load_values(self, wallet_info):
         seed = bytes.fromhex(wallet_info["seed"])
-        self.set_seed(seed)
+        testnet = wallet_info["testnet"]
+        self.set_seed(seed, testnet)
         for pocket_name, pocket_values in wallet_info["pockets"].items():
-            pocket = Pocket.from_json(pocket_values,
-                                      self._settings, self._client)
+            pocket = Pocket.from_json(pocket_values, self._settings, self)
             self._pockets[pocket_name] = pocket
+
+    def start(self):
+        client_settings = libbitcoin.server.ClientSettings()
+        client_settings.query_expire_time = self._settings.query_expire_time
+        client_settings.socks5 = self._settings.socks5
+        url = self._settings.url
+        if self.testnet:
+            url = self._settings.testnet_url
+        self.client = self._context.Client(url, client_settings)
 
     def spawn_scan(self):
         for pocket in self._pockets.values():
@@ -94,7 +106,7 @@ class Account:
             return ErrorCode.duplicate
         index = len(self._pockets)
         key = self._root_key.derive_private(index + bc.hd_first_hardened_key)
-        pocket = Pocket(key, index, self._settings, self._client)
+        pocket = Pocket(key, index, self._settings, self)
         pocket.initialize()
         self._pockets[pocket_name] = pocket
         self.save()
@@ -134,18 +146,18 @@ class Account:
 
 class Pocket:
 
-    def __init__(self, main_key, index, settings, client):
+    def __init__(self, main_key, index, settings, parent):
         self._main_key = main_key
         self._index = index
         self._settings = settings
-        self._client = client
+        self._parent = parent
         self._history = {}
 
     @classmethod
-    def from_json(cls, values, settings, client):
+    def from_json(cls, values, settings, parent):
         key = bc.HdPrivate.from_string(values["main_key"])
         index = values["index"]
-        pocket = cls(key, index, settings, client)
+        pocket = cls(key, index, settings, parent)
         pocket._keys = [bc.HdPrivate.from_string(key_str)
                         for key_str in values["keys"]]
         return pocket
@@ -168,12 +180,20 @@ class Pocket:
     @property
     def addresses(self):
         addresses = []
+        version = bc.EcPrivate.mainnet
+        if self._parent.testnet:
+            version = bc.EcPrivate.testnet
         for key in self._keys:
             secret = key.secret()
-            address = bc.PaymentAddress.from_secret(secret)
+            private = bc.EcPrivate.from_secret(secret, version)
+            address = bc.PaymentAddress.from_secret(private)
             assert address.is_valid()
             addresses.append(str(address))
         return addresses
+
+    @property
+    def _client(self):
+        return self._parent.client
 
     async def scan(self):
         for address in self.addresses:
@@ -199,10 +219,9 @@ def create_brainwallet_seed():
 
 class Wallet:
 
-    def __init__(self, context, settings, client):
+    def __init__(self, context, settings):
         self._context = context
         self._settings = settings
-        self._client = client
 
         self._init_accounts_path()
         self._account_names = darkwallet.util.list_files(self.accounts_path)
@@ -218,7 +237,7 @@ class Wallet:
     def account_filename(self, account_name):
         return os.path.join(self.accounts_path, account_name)
 
-    async def create_account(self, account_name, password):
+    async def create_account(self, account_name, password, use_testnet):
         print("create_account", account_name, password)
         if account_name in self._account_names:
             return ErrorCode.duplicate, []
@@ -230,14 +249,19 @@ class Wallet:
         account_filename = self.account_filename(account_name)
         # Init current account object
         self._account = Account(account_name, account_filename, password,
-                                self._context, self._settings, self._client)
-        self._account.set_seed(seed)
+                                self._context, self._settings)
+        self._account.set_seed(seed, use_testnet)
         self._account.save()
+        self._account.start()
         self._account_names.append(account_name)
+
+        # Create master pocket
+        self._account.create_pocket("master")
 
         return None, []
 
-    async def restore_account(self, account, brainwallet, password):
+    async def restore_account(self, account, brainwallet,
+                              password, use_testnet):
         print("restore_account", account, brainwallet, password)
         # Create new seed
         wordlist = brainwallet.strip().split(" ")
@@ -248,10 +272,16 @@ class Wallet:
         account_filename = self.account_filename(account_name)
         # Init current account object
         self._account = Account(account_name, account_filename, password,
-                                self._context, self._settings, self._client)
-        self._account.set_seed(seed)
+                                self._context, self._settings)
+        self._account.set_seed(seed, use_testnet)
         self._account.save()
+        self._account.start()
+        self._account.spawn_scan()
         self._account_names.append(account_name)
+
+        # Create master pocket
+        self._account.create_pocket("master")
+
         return None, []
 
     async def balance(self, pocket):
@@ -274,18 +304,19 @@ class Wallet:
         account_filename = self.account_filename(account_name)
         # Init current account object
         self._account = Account(account_name, account_filename, password,
-                                self._context, self._settings, self._client)
+                                self._context, self._settings)
         if not self._account.load():
             return ErrorCode.wrong_password, []
+        self._account.start()
         self._account.spawn_scan()
         return None, []
 
     async def delete_account(self, account_name):
         if not account_name in self._account_names:
             return ErrorCode.not_found, []
-        if self._account.name == account_name:
+        if self._account is not None and self._account.name == account_name:
             self._account = None
-        del self._account_names[account_name]
+        self._account_names.remove(account_name)
         account_filename = self.account_filename(account_name)
         os.remove(account_filename)
         return None, []

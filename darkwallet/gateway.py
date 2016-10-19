@@ -14,10 +14,9 @@ logging.basicConfig(level=logging.DEBUG)
 
 class QuerySocketHandler(tornado.websocket.WebSocketHandler):
 
-    def initialize(self, context, client, settings):
+    def initialize(self, context, wallet):
         self._context = context
-        self._client = client
-        self._wallet = self.application.wallet
+        self._wallet = wallet
 
     def on_message(self, message):
         self._context.spawn(self._handle_message, message)
@@ -83,18 +82,12 @@ class GatewayApplication(tornado.web.Application):
     def __init__(self, context, settings):
         self._settings = settings
 
-        client_settings = libbitcoin.server.ClientSettings()
-        client_settings.query_expire_time = settings.bs_query_expire_time
-        client_settings.socks5 = settings.socks5
-        self._client = context.Client("tcp://gateway.unsystem.net:9091",
-                                      client_settings)
-
         # Setup the modules
-        self.wallet = WalletInterface(context, settings, self._client)
+        wallet = WalletInterface(context, settings)
 
         handlers = [
             (r"/", QuerySocketHandler, dict(
-                context=context, client=self._client, settings=settings)),
+                context=context, wallet=wallet))
         ]
 
         tornado_settings = dict(debug=True)

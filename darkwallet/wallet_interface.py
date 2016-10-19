@@ -40,26 +40,27 @@ class WalletInterfaceCallback:
 class DwCreateAccount(WalletInterfaceCallback):
 
     def initialize(self, params):
-        if len(params) != 2:
+        if len(params) != 3:
             return False
-        self._account, self._password = params
+        self._account, self._password, self._use_testnet = params
         return True
 
     async def make_query(self):
         return await self._wallet.create_account(
-            self._account, self._password)
+            self._account, self._password, self._use_testnet)
 
 class DwRestoreAccount(WalletInterfaceCallback):
 
     def initialize(self, params):
-        if len(params) != 3:
+        if len(params) != 4:
             return False
-        self._account, self._brainwallet, self._password = params
+        self._account, self._brainwallet, \
+            self._password, self._use_testnet = params
         return True
 
     async def make_query(self):
-        return await self._wallet.restore_account(
-            self._account, self._brainwallet, self._password)
+        return await self._wallet.restore_account(self._account,
+            self._brainwallet, self._password, self._use_testnet)
 
 class DwBalance(WalletInterfaceCallback):
 
@@ -182,8 +183,8 @@ class WalletInterface:
         "dw_receive":           DwReceive
     }
 
-    def __init__(self, context, settings, client):
-        self._wallet = darkwallet.wallet.Wallet(context, settings, client)
+    def __init__(self, context, settings):
+        self._wallet = darkwallet.wallet.Wallet(context, settings)
 
     @property
     def commands(self):

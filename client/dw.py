@@ -30,7 +30,8 @@ async def init(args):
         "id": create_random_id(),
         "params": [
             account,
-            password
+            password,
+            args.testnet
         ]
     })
     print("Sending:", message)
@@ -54,7 +55,8 @@ async def restore(args):
         "params": [
             account,
             brainwallet,
-            password
+            password,
+            args.testnet
         ]
     })
     print("Sending:", message)
@@ -227,12 +229,18 @@ async def main():
     parser_init = subparsers.add_parser("init", help="Create new account.")
     parser_init.add_argument("account", nargs=1, metavar="ACCOUNT",
                              help="Account name")
+    parser_init.add_argument("--testnet", "-t", dest="testnet",
+        action="store_const", const=True, default=False,
+        help="Create a testnet account")
     parser_init.set_defaults(func=init)
 
     parser_restore = subparsers.add_parser("restore",
                                            help="Restore an account.")
     parser_restore.add_argument("account", nargs=1, metavar="ACCOUNT",
                                 help="Account name")
+    parser_restore.add_argument("--testnet", "-t", dest="testnet",
+        action="store_const", const=True, default=False,
+        help="Create a testnet account")
     parser_restore.set_defaults(func=restore)
 
     parser_balance = subparsers.add_parser("balance", help="Show balance")

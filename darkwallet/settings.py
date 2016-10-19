@@ -49,7 +49,9 @@ class Settings:
 
         # [bs]
         bs = config["blockchain-server"]
-        self.bs_url = bs.get("url", "tcp://gateway.unsystem.net:9091")
-        self.bs_query_expire_time = int(bs.get("query-expire-time", 200))
+        self.url = bs.get("url", "tcp://gateway.unsystem.net:9091")
+        self.testnet_url = bs.get("testnet-url",
+            "tcp://testnet.unsystem.net:9091")
+        self.query_expire_time = int(bs.get("query-expire-time", 200))
         self.socks5 = bs.get("socks5", None)
 
