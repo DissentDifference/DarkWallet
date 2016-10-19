@@ -118,8 +118,19 @@ class Account:
         if pocket_name is not None and pocket_name not in self._pockets:
             return ErrorCode.not_found, []
         if pocket_name is None:
-            return None, self.all_addresses
-        return None, self._pockets[pocket_name].addresses
+            return None, [self.all_addresses]
+        return None, [self._pockets[pocket_name].addresses]
+
+    @property
+    def total_balance(self):
+        return sum(pocket.balance() for pocket in self._pockets.values())
+
+    def balance(self, pocket_name=None):
+        if pocket_name is not None and pocket_name not in self._pockets:
+            return ErrorCode.not_found, []
+        if pocket_name is None:
+            return None, [self.total_balance]
+        return None, [self._pockets[pocket_name].balance()]
 
 class Pocket:
 
@@ -174,6 +185,13 @@ class Pocket:
             print("Couldn't fetch history:", ec, file=sys.stderr)
             return
         self._history[address] = history
+
+    def balance(self):
+        address_balance = lambda history: \
+            sum(output[2] for output, spend in history if spend is None)
+        total_balance = lambda history_map: \
+            sum(address_balance(history) for history in history_map.values())
+        return total_balance(self._history)
 
 def create_brainwallet_seed():
     entropy = os.urandom(1024)
@@ -237,11 +255,13 @@ class Wallet:
         return None, []
 
     async def balance(self, pocket):
-        print("balance", pocket)
-        return None, []
+        if self._account is None:
+            return ErrorCode.no_active_account_set, []
+        return self._account.balance(pocket)
 
     async def history(self, pocket):
-        print("history", pocket)
+        if self._account is None:
+            return ErrorCode.no_active_account_set, []
         return None, []
 
     async def list_accounts(self):
@@ -294,7 +314,6 @@ class Wallet:
     async def receive(self, pocket):
         if self._account is None:
             return ErrorCode.no_active_account_set, []
-        print("receive", pocket)
         ec, addresses = self._account.receive(pocket)
-        return ec, [addresses]
+        return ec, addresses
 
