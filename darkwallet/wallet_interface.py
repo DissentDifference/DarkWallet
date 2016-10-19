@@ -166,6 +166,14 @@ class DwReceive(WalletInterfaceCallback):
     async def make_query(self):
         return await self._wallet.receive(self._pocket)
 
+class DwGetHeight(WalletInterfaceCallback):
+
+    def initialize(self, params):
+        return not params
+
+    async def make_query(self):
+        return await self._wallet.get_height()
+
 class WalletInterface:
 
     _handlers = {
@@ -180,7 +188,8 @@ class WalletInterface:
         "dw_create_pocket":     DwCreatePocket,
         "dw_delete_pocket":     DwDeletePocket,
         "dw_send":              DwSend,
-        "dw_receive":           DwReceive
+        "dw_receive":           DwReceive,
+        "dw_get_height":        DwGetHeight
     }
 
     def __init__(self, context, settings):

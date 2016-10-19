@@ -144,6 +144,9 @@ class Account:
             return None, [self.total_balance]
         return None, [self._pockets[pocket_name].balance()]
 
+    async def get_height(self):
+        return await self.client.last_height()
+
 class Pocket:
 
     def __init__(self, main_key, index, settings, parent):
@@ -347,4 +350,10 @@ class Wallet:
             return ErrorCode.no_active_account_set, []
         ec, addresses = self._account.receive(pocket)
         return ec, addresses
+
+    async def get_height(self):
+        if self._account is None:
+            return ErrorCode.no_active_account_set, []
+        ec, height = await self._account.get_height()
+        return ec, height
 
