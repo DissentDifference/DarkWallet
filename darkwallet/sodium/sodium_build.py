@@ -17,6 +17,8 @@ size_t crypto_pwhash_saltbytes(void);
 
 size_t crypto_pwhash_strbytes(void);
 
+size_t crypto_pwhash_opslimit_interactive(void);
+size_t crypto_pwhash_memlimit_interactive(void);
 size_t crypto_pwhash_opslimit_moderate(void);
 size_t crypto_pwhash_memlimit_moderate(void);
 size_t crypto_pwhash_opslimit_sensitive(void);
