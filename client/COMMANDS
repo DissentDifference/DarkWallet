@@ -1,15 +1,21 @@
 ~/.darkwallet.cfg (runs over Tor)
 
-dw init ACCOUNT                Creates new wallet
-dw restore ACCOUNT             Restore wallet
+dw init ACCOUNT                 Creates new wallet
+dw restore ACCOUNT              Restore wallet
 dw balance <POCKET>
 dw history <POCKET>
-dw account		Lists accounts
-dw set ACCOUNT		Switch to ACCOUNT
+dw account		                Lists accounts
+dw set ACCOUNT		            Switch to ACCOUNT
 dw rm ACCOUNT
-dw pocket               Lists pockets
-dw pocket POCKET        Create account
-dw pocket -d POCKET     Delete account
+dw pocket                       Lists pockets
+dw pocket POCKET                Create account
+dw pocket -d POCKET             Delete account
 dw send <POCKET> ADDRESS:AMOUNT ...
 dw recv <POCKET>
+dw get_height                   Last block height
+                                (used for checking blockchain is synced)
+dw setting NAME                 Get a setting's value
+dw setting NAME VALUE           Set a setting's value
+dw help                         Show commands and their help
+dw COMMAND -h                   Show command specific help
 
