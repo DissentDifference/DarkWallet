@@ -309,6 +309,7 @@ class Wallet:
         self._account = Account(account_name, account_filename, password,
                                 self._context, self._settings)
         if not self._account.load():
+            self._account = None
             return ErrorCode.wrong_password, []
         self._account.start()
         self._account.spawn_scan()
