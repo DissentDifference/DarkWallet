@@ -144,6 +144,24 @@ class Account:
             return None, [self.total_balance]
         return None, [self._pockets[pocket_name].balance()]
 
+    @property
+    def combined_history(self):
+        result = []
+        for pocket in self._pockets.values():
+            result.extend(pocket.history())
+        def get_key(item):
+            return item[2]
+        result.sort(key=get_key)
+        return result
+
+    def history(self, pocket_name=None):
+        if pocket_name is not None and pocket_name not in self._pockets:
+            return ErrorCode.not_found, []
+        if pocket_name is None:
+            # Most recent history from all pockets
+            return None, self.combined_history
+        return None, self._pockets[pocket_name].history()
+
     async def get_height(self):
         return await self.client.last_height()
 
@@ -155,6 +173,7 @@ class Pocket:
         self._settings = settings
         self._parent = parent
         self._history = {}
+        self._transactions = {}
 
     @classmethod
     def from_json(cls, values, settings, parent):
@@ -208,6 +227,14 @@ class Pocket:
             print("Couldn't fetch history:", ec, file=sys.stderr)
             return
         self._history[address] = history
+        output_tx_hashes = [output[0].hash for output, _ in history]
+        for tx_hash in output_tx_hashes:
+            ec, tx_data = await self._client.transaction(tx_hash)
+            if ec:
+                print("Couldn't fetch transaction:", ec, tx_hash.hex(),
+                      file=sys.stderr)
+                continue
+            self._transactions[tx_hash] = tx_data
 
     def balance(self):
         address_balance = lambda history: \
@@ -215,6 +242,20 @@ class Pocket:
         total_balance = lambda history_map: \
             sum(address_balance(history) for history in history_map.values())
         return total_balance(self._history)
+
+    def history(self):
+        # Combine all address histories into one
+        flatten = lambda l: [item for sublist in l for item in sublist]
+        all_history = flatten(self._history.values())
+        result = []
+        for output, _ in all_history:
+            point, height, value = output
+            result.append(("1bc", value, height))
+        # TODO: add spend
+        def get_key(item):
+            return item[2]
+        result.sort(key=get_key)
+        return result
 
 def create_brainwallet_seed():
     entropy = os.urandom(1024)
@@ -295,7 +336,7 @@ class Wallet:
     async def history(self, pocket):
         if self._account is None:
             return ErrorCode.no_active_account_set, []
-        return None, []
+        return self._account.history(pocket)
 
     async def list_accounts(self):
         account_name = None if self._account is None else self._account.name
