@@ -13,6 +13,13 @@ def write_json(filename, json_object):
 def read_json(filename):
     return json.loads(open(filename).read())
 
+def hd_private_key_address(key, version):
+    secret = key.secret()
+    private = bc.EcPrivate.from_secret(secret, version)
+    address = bc.PaymentAddress.from_secret(private)
+    assert address.is_valid()
+    return str(address)
+
 class ErrorCode(enum.Enum):
 
     wrong_password = 1
@@ -77,14 +84,14 @@ class Account:
             pockets[pocket_name] = pocket.serialize()
         return {
             "seed": self._seed.hex(),
-            "worldlist": self._worldlist,
+            "wordlist": self._wordlist,
             "pockets": pockets,
             "testnet": self.testnet
         }
 
     def _load_values(self, wallet_info):
         seed = bytes.fromhex(wallet_info["seed"])
-        wordlist = wallet_info["worldlist"]
+        wordlist = wallet_info["wordlist"]
         testnet = wallet_info["testnet"]
         self.set_seed(seed, wordlist, testnet)
         for pocket_name, pocket_values in wallet_info["pockets"].items():
@@ -211,13 +218,7 @@ class Pocket:
         version = bc.EcPrivate.mainnet
         if self._parent.testnet:
             version = bc.EcPrivate.testnet
-        for key in self._keys:
-            secret = key.secret()
-            private = bc.EcPrivate.from_secret(secret, version)
-            address = bc.PaymentAddress.from_secret(private)
-            assert address.is_valid()
-            addresses.append(str(address))
-        return addresses
+        return [hd_private_key_address(key) for key in self._keys]
 
     @property
     def _client(self):
