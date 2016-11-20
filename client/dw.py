@@ -41,6 +41,20 @@ async def init(args):
     print(response)
     return 0
 
+async def seed(args):
+    message = json.dumps({
+        "command": "dw_seed",
+        "id": create_random_id(),
+        "params": [
+        ]
+    })
+    print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
+    return 0
+
 async def restore(args):
     assert args.account
     account = args.account[0]
@@ -273,6 +287,10 @@ async def main():
         action="store_const", const=True, default=False,
         help="Create a testnet account")
     parser_init.set_defaults(func=init)
+
+    parser_seed = subparsers.add_parser("seed",
+                                        help="Show brainwallet seed.")
+    parser_seed.set_defaults(func=seed)
 
     parser_restore = subparsers.add_parser("restore",
                                            help="Restore an account.")

@@ -31,8 +31,12 @@ class Account:
         self._context = context
         self._settings = settings
 
-    def set_seed(self, seed, testnet):
+    def brainwallet_wordlist(self):
+        return self._wordlist
+
+    def set_seed(self, seed, wordlist, testnet):
         self._seed = seed
+        self._wordlist = wordlist
         self.testnet = testnet
         prefixes = bc.HdPrivate.mainnet
         if self.testnet:
@@ -73,14 +77,16 @@ class Account:
             pockets[pocket_name] = pocket.serialize()
         return {
             "seed": self._seed.hex(),
+            "worldlist": self._worldlist,
             "pockets": pockets,
             "testnet": self.testnet
         }
 
     def _load_values(self, wallet_info):
         seed = bytes.fromhex(wallet_info["seed"])
+        wordlist = wallet_info["worldlist"]
         testnet = wallet_info["testnet"]
-        self.set_seed(seed, testnet)
+        self.set_seed(seed, wordlist, testnet)
         for pocket_name, pocket_values in wallet_info["pockets"].items():
             pocket = Pocket.from_json(pocket_values, self._settings, self)
             self._pockets[pocket_name] = pocket
@@ -258,7 +264,7 @@ class Pocket:
         return result
 
 def create_brainwallet_seed():
-    entropy = os.urandom(1024)
+    entropy = os.urandom(16)
     return bc.create_mnemonic(entropy)
 
 class Wallet:
@@ -288,13 +294,14 @@ class Wallet:
 
         # Create new seed
         wordlist = create_brainwallet_seed()
+        print("Wordlist:", wordlist)
         seed = bc.decode_mnemonic(wordlist).data
 
         account_filename = self.account_filename(account_name)
         # Init current account object
         self._account = Account(account_name, account_filename, password,
                                 self._context, self._settings)
-        self._account.set_seed(seed, use_testnet)
+        self._account.set_seed(seed, wordlist, use_testnet)
         self._account.save()
         self._account.start()
         self._account_names.append(account_name)
@@ -303,6 +310,11 @@ class Wallet:
         self._account.create_pocket(self._settings.master_pocket_name)
 
         return None, []
+
+    async def seed(self):
+        if self._account is None:
+            return ErrorCode.no_active_account_set, []
+        return None, self._account.brainwallet_wordlist()
 
     async def restore_account(self, account, brainwallet,
                               password, use_testnet):
@@ -317,7 +329,7 @@ class Wallet:
         # Init current account object
         self._account = Account(account_name, account_filename, password,
                                 self._context, self._settings)
-        self._account.set_seed(seed, use_testnet)
+        self._account.set_seed(seed, worldlist, use_testnet)
         self._account.save()
         self._account.start()
         self._account.spawn_scan()

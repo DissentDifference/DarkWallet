@@ -49,6 +49,16 @@ class DwCreateAccount(WalletInterfaceCallback):
         return await self._wallet.create_account(
             self._account, self._password, self._use_testnet)
 
+class DwSeed(WalletInterfaceCallback):
+
+    def initialize(self, params):
+        if params:
+            return False
+        return True
+
+    async def make_query(self):
+        return await self._wallet.seed()
+
 class DwRestoreAccount(WalletInterfaceCallback):
 
     def initialize(self, params):
@@ -200,6 +210,7 @@ class WalletInterface:
 
     _handlers = {
         "dw_create_account":    DwCreateAccount,
+        "dw_seed":              DwSeed,
         "dw_restore_account":   DwRestoreAccount,
         "dw_balance":           DwBalance,
         "dw_history":           DwHistory,
