@@ -120,7 +120,7 @@ class Account:
         index = len(self._pockets)
         key = self._root_key.derive_private(index + bc.hd_first_hardened_key)
         pocket = Pocket(key, index, self._settings, self)
-        pocket.initialize()
+        pocket.generate_keys()
         self._pockets[pocket_name] = pocket
         self.save()
         return None
@@ -186,7 +186,9 @@ class Pocket:
         self._settings = settings
         self._parent = parent
         self._history = {}
-        self._transactions = {}
+        self._transactions_cache = {}
+        self._keys = []
+        self._last_used_key_index = -1
 
     @classmethod
     def from_json(cls, values, settings, parent):
@@ -197,12 +199,16 @@ class Pocket:
                         for key_str in values["keys"]]
         return pocket
 
-    def initialize(self):
-        # Generate gap_limit (default is 5) new keys
-        self._keys = [
+    def generate_keys(self):
+        assert self.total_needed_keys >= len(self._keys)
+        extra_needed_keys = self.total_needed_keys - len(self._keys)
+        print("Generating %s extra keys (current length is %s)." % (
+              extra_needed_keys, len(self._keys)))
+        # Always ensure gap_limit (default 5) extra keys exist.
+        self._keys.extend([
             self._main_key.derive_private(i + bc.hd_first_hardened_key)
-            for i in range(self._settings.gap_limit)
-        ]
+            for i in range(extra_needed_keys)
+        ])
 
     def serialize(self):
         keys = [key.encoded() for key in self._keys]
@@ -218,21 +224,33 @@ class Pocket:
         version = bc.EcPrivate.mainnet
         if self._parent.testnet:
             version = bc.EcPrivate.testnet
-        return [hd_private_key_address(key) for key in self._keys]
+        return [hd_private_key_address(key, version) for key in self._keys]
 
     @property
     def _client(self):
         return self._parent.client
 
-    async def scan(self):
-        for address in self.addresses:
-            await self._process(address)
+    @property
+    def total_needed_keys(self):
+        return self._last_used_key_index + 1 + self._settings.gap_limit
 
-    async def _process(self, address):
+    async def scan(self):
+        end_scanned_key_index = 0
+        while end_scanned_key_index < len(self._keys):
+            remain_addrs = self.addresses[end_scanned_key_index:]
+            for index, address in enumerate(remain_addrs):
+                await self._process(index, address)
+            end_scanned_key_index = len(self._keys)
+            self.generate_keys()
+        self._parent.save()
+
+    async def _process(self, index, address):
         ec, history = await self._client.history(address)
         if ec:
             print("Couldn't fetch history:", ec, file=sys.stderr)
             return
+        if history and index > self._last_used_key_index:
+            self._last_used_key_index = index
         self._history[address] = history
         output_tx_hashes = [output[0].hash for output, _ in history]
         for tx_hash in output_tx_hashes:
@@ -241,7 +259,7 @@ class Pocket:
                 print("Couldn't fetch transaction:", ec, tx_hash.hex(),
                       file=sys.stderr)
                 continue
-            self._transactions[tx_hash] = tx_data
+            self._transactions_cache[tx_hash] = tx_data
 
     def balance(self):
         address_balance = lambda history: \
