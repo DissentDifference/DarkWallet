@@ -52,7 +52,7 @@ class Settings:
         self.url = bs.get("url", "tcp://gateway.unsystem.net:9091")
         self.testnet_url = bs.get("testnet-url",
             "tcp://testnet.unsystem.net:9091")
-        self.query_expire_time = int(bs.get("query-expire-time", 200))
+        self.query_expire_time = float(bs.get("query-expire-time", 4.0))
         self.socks5 = bs.get("socks5", None)
 
     def save(self):
