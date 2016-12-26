@@ -110,8 +110,11 @@ class Account:
         self.client = Client(self._context, url, client_settings)
 
     def spawn_scan(self):
+        self._context.spawn(self._start_scan)
+
+    async def _start_scan(self):
         for pocket in self._pockets.values():
-            self._context.spawn(pocket.scan)
+            await pocket.scan()
 
     def list_pockets(self):
         return list(self._pockets.keys())
@@ -298,6 +301,19 @@ class Wallet:
         self._account_names = darkwallet.util.list_files(self.accounts_path)
         self._account = None
 
+        self._context.spawn(self._poller)
+        self._stopped = False
+        self._context.register(self)
+
+    async def _poller(self):
+        while self._stopped:
+            asyncio.sleep(20)
+            if self._account is None:
+                self._account.spawn_scan()
+
+    async def stop(self):
+        self._stopped = True
+
     @property
     def accounts_path(self):
         return os.path.join(self._settings.config_path, "accounts")
@@ -325,6 +341,7 @@ class Wallet:
         self._account.set_seed(seed, wordlist, use_testnet)
         self._account.save()
         self._account.start()
+        self._account.spawn_scan()
         self._account_names.append(account_name)
 
         # Create master pocket
