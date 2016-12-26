@@ -1,8 +1,10 @@
 import enum
 import json
 import os
+import sys
 
 import libbitcoin.server
+from libbitcoin.server_fake_async import Client
 import darkwallet.util
 from libbitcoin import bc
 from darkwallet import sodium
@@ -105,7 +107,7 @@ class Account:
         url = self._settings.url
         if self.testnet:
             url = self._settings.testnet_url
-        self.client = self._context.Client(url, client_settings)
+        self.client = Client(self._context, url, client_settings)
 
     def spawn_scan(self):
         for pocket in self._pockets.values():

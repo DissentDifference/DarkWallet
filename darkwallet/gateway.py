@@ -5,7 +5,7 @@ import tornado.options
 import tornado.web
 import tornado.websocket
 
-import libbitcoin.server
+from libbitcoin.server_fake_async import TornadoContext
 from darkwallet.wallet_interface import WalletInterface
 
 # Debug stuff
@@ -99,7 +99,7 @@ class GatewayApplication(tornado.web.Application):
         self.listen(self._settings.port)
 
 def start(settings):
-    context = libbitcoin.server.TornadoContext()
+    context = TornadoContext()
     # Handle CTRL-C
     def signal_handler(signum, frame):
         print("Stopping darkwallet-daemon...")
