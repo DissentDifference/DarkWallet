@@ -206,6 +206,12 @@ class DwSetSetting(WalletInterfaceCallback):
     async def make_query(self):
         return await self._wallet.set_setting(self._name, self._value)
 
+class DwStop(WalletInterfaceCallback):
+
+    async def make_query(self):
+        await self._wallet.stop()
+        return None, []
+
 class WalletInterface:
 
     _handlers = {
@@ -224,7 +230,8 @@ class WalletInterface:
         "dw_receive":           DwReceive,
         "dw_get_height":        DwGetHeight,
         "dw_get_setting":       DwGetSetting,
-        "dw_set_setting":       DwSetSetting
+        "dw_set_setting":       DwSetSetting,
+        "dw_stop":              DwStop
     }
 
     def __init__(self, context, settings):

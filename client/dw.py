@@ -270,6 +270,17 @@ async def setting(args):
         response = json.loads(await websocket.recv())
     print(response)
 
+async def stop(args):
+    message = json.dumps({
+        "command": "dw_stop",
+        "id": create_random_id(),
+        "params": [
+        ]
+    })
+    print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+
 async def main():
     # Command line arguments
     parser = argparse.ArgumentParser(prog="dw")
@@ -358,6 +369,9 @@ async def main():
     parser_setting.add_argument("value", nargs="?", metavar="VALUE",
                                 default=None, help="Setting value")
     parser_setting.set_defaults(func=setting)
+
+    parser_help = subparsers.add_parser("stop", help="Stop the daemon")
+    parser_help.set_defaults(func=stop)
 
     parser_help = subparsers.add_parser("help", help="Show help")
     parser_help.set_defaults(func=None)

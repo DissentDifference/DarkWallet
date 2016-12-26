@@ -464,3 +464,6 @@ class Wallet:
         self._settings.save()
         return None, []
 
+    async def stop(self):
+        self._context.stop()
+
