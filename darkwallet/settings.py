@@ -24,9 +24,14 @@ class Settings:
         parser.add_argument("--port", "-p", dest="port",
                             help="Run on the given port.",
                             default=None)
+        parser.add_argument("--ws", "-w", dest="use_ws_impl",
+                            action="store_const", const=True, default=False,
+                            help="Use the websocket implementation instead.")
         return parser.parse_args()
 
     def _load(self, args):
+        self.use_ws_impl = args.use_ws_impl
+
         self.config_path = args.config
         darkwallet.util.make_sure_dir_exists(self.config_path)
         self.config_filename = os.path.join(self.config_path, "darkwallet.cfg")
