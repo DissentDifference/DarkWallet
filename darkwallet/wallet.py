@@ -124,6 +124,11 @@ class AccountModel:
         return self._model["pockets"].keys()
 
     @property
+    def pockets(self):
+        return [PocketModel(pocket, self.testnet) for pocket in
+                self._model["pockets"].values()]
+
+    @property
     def cache(self):
         return CacheModel(self._model["cache"])
 
@@ -167,15 +172,22 @@ class PocketModel:
         return bc.HdPrivate.from_string(self._model["keys"][i])
 
     def key_from_addr(self, addr):
-        addrs_map = self._model["addrs"].items()
-        results = [item[0] for item in addrs_map if item[1] == addr]
-        assert len(results) == 1
-        index = results[0]
+        index = self.index(addr)
         return self.key(index)
 
     @property
     def addrs(self):
         return self._model["addrs"].values()
+
+    def index(self, addr):
+        addrs_map = self._model["addrs"].items()
+        results = [item[0] for item in addrs_map if item[1] == addr]
+        assert len(results) == 1
+        index = results[0]
+        return index
+
+    def __len__(self):
+        return len(self._model["keys"])
 
 class CacheModel:
 
@@ -200,38 +212,71 @@ class HistoryModel:
         return self._model.keys()
 
     def __getitem__(self, addr):
-        return self._model[addr]
+        return [HistoryRowModel(row) for row in self._model[addr]]
 
     def __setitem__(self, addr, history):
-        history = [HistoryRowModel.from_server(addr, row) for row in history]
-        self._model[addr] = history
+        history_model = []
+        for output, spend in history:
+            if spend is None:
+                spend = None
+            else:
+                spend = {
+                    "hash": spend[0].hash.hex(),
+                    "index": spend[0].index,
+                    "height": spend[1]
+                }
+                history_model.append({
+                    "type": "spend",
+                    "addr": addr,
+                    "spend": spend,
+                    "value": -output[2],
+                })
+            history_model.append({
+                "type": "output",
+                "addr": addr,
+                "output": {
+                    "hash": output[0].hash.hex(),
+                    "index": output[0].index,
+                    "height": output[1],
+                },
+                "value": output[2],
+                "spend": spend
+            })
+        self._model[addr] = history_model
 
-    def all(from_height=0):
-        all_rows = []
-        for history in self.items():
-            all_rows.extend(
-                [row for row in history if row.height >= from_height]
-            )
+    def values(self):
+        return [[HistoryRowModel(row) for row in history]
+                for history in self._model.values()]
+
+    def all(self, from_height=0):
+        flatten = lambda l: [item for sublist in l for item in sublist]
+        all_rows = flatten(self.values())
+        all_rows = [row for row in all_rows if row.height >= from_height]
         return all_rows
 
-    def items(self):
-        return [HistoryRowModel(row) for row in self._model]
+    @property
+    def transaction_hashes(self):
+        return [row.transaction_hash for row in self.all()]
 
 class HistoryRowModel:
 
     def __init__(self, model):
         self._model = model
 
-    @classmethod
-    def from_server(cls, addr, row):
-        print(row)
-        return cls({
-            "addr": addr
-        })
+    @property
+    def object(self):
+        if self._model["type"] == "output":
+            return self._model["output"]
+        elif self._model["type"] == "spend":
+            return self._model["spend"]
+
+    @property
+    def transaction_hash(self):
+        return bc.hash_literal(self.object["hash"])
 
     @property
     def height(self):
-        return 0
+        return self.object["height"]
 
 class TransactionModel:
 
@@ -246,6 +291,12 @@ class TransactionModel:
         assert tx is not None
         assert tx.is_valid()
         return tx
+
+    def __setitem__(self, tx_hash, tx):
+        self._model[bc.encode_hash(tx_hash)] = tx.hex()
+
+    def __contains__(self, tx_hash):
+        return bc.encode_hash(tx_hash) in self._model
 
 class Account:
 
@@ -297,6 +348,11 @@ class Account:
         while not self._stopped:
             await self._sync_history()
             print("Scanned.")
+            await self._fill_cache()
+            print("Cache filled.")
+            print("--------------")
+            print(json.dumps(self._model._model, indent=2))
+            await self._generate_keys()
             await asyncio.sleep(5)
 
     async def _sync_history(self):
@@ -317,6 +373,34 @@ class Account:
 
         self._model.cache.history[addr] = history
 
+    async def _fill_cache(self):
+        for tx_hash in self._model.cache.history.transaction_hashes:
+            if not tx_hash in self._model.cache.transactions:
+                await self._grab_tx(tx_hash)
+
+    async def _grab_tx(self, tx_hash):
+        print(bc.encode_hash(tx_hash))
+        ec, tx = await self.client.transaction(tx_hash.data)
+        if ec:
+            print("Couldn't fetch transaction:", ec, file=sys.stderr)
+            return
+        print("Got tx:", tx_hash)
+        self._model.cache.transactions[tx_hash] = tx
+
+    async def _generate_keys(self):
+        for pocket in self._model.pockets:
+            self._generate_pocket_keys(pocket)
+
+    def _generate_pocket_keys(self, pocket):
+        max_i = -1
+        for addr in pocket.addrs:
+            if self._model.cache.history[addr]:
+                i = pocket.index(addr)
+                max_i = max(i, max_i)
+        desired_len = max_i + 1 + self._settings.gap_limit
+        remaining = desired_len - len(pocket)
+        [pocket.add_key() for i in range(remaining)]
+
     async def _start_scan(self):
         for pocket in self._pockets.values():
             await pocket.scan()
@@ -329,7 +413,6 @@ class Account:
 
         if pocket_model is None:
             return ErrorCode.duplicate
-        [pocket_model.add_key() for i in range(self._settings.gap_limit)]
 
         return None
 
