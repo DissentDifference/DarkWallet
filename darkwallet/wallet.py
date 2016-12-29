@@ -331,11 +331,9 @@ class Account:
 
     def __init__(self, name, filename, password, context, settings):
         self.name = name
-        self._pockets = {}
         self._context = context
         self._settings = settings
 
-        self._filename = filename
         self._password = bytes(password, "utf-8")
 
         self._model = AccountModel(filename)
@@ -450,15 +448,12 @@ class Account:
         return None
 
     @property
-    def all_addresses(self):
-        all_addresses = []
-        for pocket in self._pockets.values():
-            all_addresses.extend(pocket.addresses)
-        return all_addresses
+    def addrs(self):
+        return flatten(pocket.addrs for pocket in self._model.pockets)
 
     def receive(self, pocket_name=None):
         if pocket_name is None:
-            return None, [self.all_addresses]
+            return None, [self.addrs]
 
         pocket = self._model.pocket(pocket_name)
         if pocket is None:
@@ -510,110 +505,6 @@ class Account:
 
     async def get_height(self):
         return await self.client.last_height()
-
-class Pocket:
-
-    def __init__(self, main_key, index, settings, parent):
-        self._main_key = main_key
-        self._index = index
-        self._settings = settings
-        self._parent = parent
-        self._history = {}
-        self._transactions_cache = {}
-        self._keys = []
-        self._last_used_key_index = -1
-
-    @classmethod
-    def from_json(cls, values, settings, parent):
-        key = bc.HdPrivate.from_string(values["main_key"])
-        index = values["index"]
-        pocket = cls(key, index, settings, parent)
-        pocket._keys = [bc.HdPrivate.from_string(key_str)
-                        for key_str in values["keys"]]
-        return pocket
-
-    def generate_keys(self):
-        assert self.total_needed_keys >= len(self._keys)
-        extra_needed_keys = self.total_needed_keys - len(self._keys)
-        print("Generating %s extra keys (current length is %s)." % (
-              extra_needed_keys, len(self._keys)))
-        # Always ensure gap_limit (default 5) extra keys exist.
-        self._keys.extend([
-            self._main_key.derive_private(i + bc.hd_first_hardened_key)
-            for i in range(extra_needed_keys)
-        ])
-
-    def serialize(self):
-        keys = [key.encoded() for key in self._keys]
-        return {
-            "main_key": self._main_key.encoded(),
-            "index": self._index,
-            "keys": keys
-        }
-
-    @property
-    def addresses(self):
-        addresses = []
-        version = bc.EcPrivate.mainnet
-        if self._parent.testnet:
-            version = bc.EcPrivate.testnet
-        return [hd_private_key_address(key, version) for key in self._keys]
-
-    @property
-    def _client(self):
-        return self._parent.client
-
-    @property
-    def total_needed_keys(self):
-        return self._last_used_key_index + 1 + self._settings.gap_limit
-
-    async def scan(self):
-        end_scanned_key_index = 0
-        while end_scanned_key_index < len(self._keys):
-            remain_addrs = self.addresses[end_scanned_key_index:]
-            for index, address in enumerate(remain_addrs):
-                await self._process(index, address)
-            end_scanned_key_index = len(self._keys)
-            self.generate_keys()
-        self._parent.save()
-
-    async def _process(self, index, address):
-        ec, history = await self._client.history(address)
-        if ec:
-            print("Couldn't fetch history:", ec, file=sys.stderr)
-            return
-        if history and index > self._last_used_key_index:
-            self._last_used_key_index = index
-        self._history[address] = history
-        output_tx_hashes = [output[0].hash for output, _ in history]
-        for tx_hash in output_tx_hashes:
-            ec, tx_data = await self._client.transaction(tx_hash)
-            if ec:
-                print("Couldn't fetch transaction:", ec, tx_hash.hex(),
-                      file=sys.stderr)
-                continue
-            self._transactions_cache[tx_hash] = tx_data
-
-    def balance(self):
-        address_balance = lambda history: \
-            sum(output[2] for output, spend in history if spend is None)
-        total_balance = lambda history_map: \
-            sum(address_balance(history) for history in history_map.values())
-        return total_balance(self._history)
-
-    def history(self):
-        # Combine all address histories into one
-        flatten = lambda l: [item for sublist in l for item in sublist]
-        all_history = flatten(self._history.values())
-        result = []
-        for output, _ in all_history:
-            point, height, value = output
-            result.append(("1bc", value, height))
-        # TODO: add spend
-        def get_key(item):
-            return item[2]
-        result.sort(key=get_key)
-        return result
 
 def create_brainwallet_seed():
     entropy = os.urandom(16)
