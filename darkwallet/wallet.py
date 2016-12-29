@@ -1,3 +1,4 @@
+import asyncio
 import enum
 import json
 import os
@@ -34,7 +35,16 @@ class AccountModel:
 
     def __init__(self, filename):
         self._filename = filename
-        self._model = {}
+        self._model = {
+            "pockets": {
+            },
+            "cache": {
+                "history": {
+                },
+                "transactions": {
+                }
+            }
+        }
 
     def load(self, password):
         encrypted_wallet_info = read_json(self._filename)
@@ -48,10 +58,11 @@ class AccountModel:
             return False
         message = str(message, "ascii")
         self._model = json.loads(message)
-        print("Loading:", json.dumps(self_model, indent=2))
+        print("Loading:", json.dumps(self._model, indent=2))
         return True
 
     def save(self, password):
+        print(self._model)
         print("Saving:", json.dumps(self._model, indent=2))
         message = bytes(json.dumps(self._model), "utf-8")
         salt, nonce, ciphertext = sodium.encrypt(message, password)
@@ -96,22 +107,35 @@ class AccountModel:
         i = len(self._model["pockets"])
         self._model["pockets"][name] = {
             "keys": [
-            ]
+            ],
             "addrs": {
             }
         }
         key = self.root_key.derive_private(i + bc.hd_first_hardened_key)
         self.pocket(name).index = i
+        self.pocket(name).main_key = key
         return self.pocket(name)
 
     def pocket(self, name):
         return PocketModel(self._model["pockets"][name], self.testnet)
+
+    @property
+    def pocket_names(self):
+        return self._model["pockets"].keys()
+
+    @property
+    def cache(self):
+        return CacheModel(self._model["cache"])
 
 class PocketModel:
 
     def __init__(self, model, testnet):
         self._model = model
         self._testnet = testnet
+
+        # Json converts dict keys to strings. Convert them back.
+        self._model["addrs"] = {int(key): value for key, value
+                                in self._model["addrs"].items()}
 
     @property
     def main_key(self):
@@ -130,10 +154,11 @@ class PocketModel:
     def add_key(self):
         i = len(self._model["keys"])
         key = self.main_key.derive_private(i + bc.hd_first_hardened_key)
-        self._model["keys"].append(key)
+        key_str = key.encoded()
+        self._model["keys"].append(key_str)
 
         version = bc.EcPrivate.mainnet
-        if self._parent.testnet:
+        if self._testnet:
             version = bc.EcPrivate.testnet
         addr = hd_private_key_address(key, version)
         self._model["addrs"][i] = addr
@@ -141,8 +166,86 @@ class PocketModel:
     def key(self, i):
         return bc.HdPrivate.from_string(self._model["keys"][i])
 
-    def addr(self, i):
-        return self._model["addrs"][i]
+    def key_from_addr(self, addr):
+        addrs_map = self._model["addrs"].items()
+        results = [item[0] for item in addrs_map if item[1] == addr]
+        assert len(results) == 1
+        index = results[0]
+        return self.key(index)
+
+    @property
+    def addrs(self):
+        return self._model["addrs"].values()
+
+class CacheModel:
+
+    def __init__(self, model):
+        self._model = model
+
+    @property
+    def history(self):
+        return HistoryModel(self._model["history"])
+
+    @property
+    def transactions(self):
+        return TransactionModel(self._model["transactions"])
+
+class HistoryModel:
+
+    def __init__(self, model):
+        self._model = model
+
+    @property
+    def addrs(self):
+        return self._model.keys()
+
+    def __getitem__(self, addr):
+        return self._model[addr]
+
+    def __setitem__(self, addr, history):
+        history = [HistoryRowModel.from_server(addr, row) for row in history]
+        self._model[addr] = history
+
+    def all(from_height=0):
+        all_rows = []
+        for history in self.items():
+            all_rows.extend(
+                [row for row in history if row.height >= from_height]
+            )
+        return all_rows
+
+    def items(self):
+        return [HistoryRowModel(row) for row in self._model]
+
+class HistoryRowModel:
+
+    def __init__(self, model):
+        self._model = model
+
+    @classmethod
+    def from_server(cls, addr, row):
+        print(row)
+        return cls({
+            "addr": addr
+        })
+
+    @property
+    def height(self):
+        return 0
+
+class TransactionModel:
+
+    def __init__(self, model):
+        self._model = model
+
+    def __getitem__(self, tx_hash):
+        if isinstance(tx_hash, bc.HashDigest):
+            tx_hash = str(tx_hash)
+        tx_data = self._model[tx_hash]
+        tx = bc.Transaction.from_data(tx_data)
+        assert tx is not None
+        assert tx.is_valid()
+        return tx
 
 class Account:
 
@@ -156,6 +259,9 @@ class Account:
         self._password = bytes(password, "utf-8")
 
         self._model = AccountModel(filename)
+        self.client = None
+
+        self._stopped = False
 
     def brainwallet_wordlist(self):
         return self._model.wordlist
@@ -176,13 +282,40 @@ class Account:
         client_settings.query_expire_time = self._settings.query_expire_time
         client_settings.socks5 = self._settings.socks5
         url = self._settings.url
-        if self.testnet:
+        if self._model.testnet:
             url = self._settings.testnet_url
         self.client = Client(self._context, url, client_settings)
 
+    def stop(self):
+        self._stopped = True
+
     def spawn_scan(self):
-        #self._context.spawn(self._start_scan)
-        pass
+        loop = asyncio.get_event_loop()
+        loop.create_task(self._check_updates())
+
+    async def _check_updates(self):
+        while not self._stopped:
+            await self._sync_history()
+            print("Scanned.")
+            await asyncio.sleep(5)
+
+    async def _sync_history(self):
+        addrs = []
+        for pocket_name in self._model.pocket_names:
+            pocket = self._model.pocket(pocket_name)
+            addrs.extend(pocket.addrs)
+
+        for addr in addrs:
+            await self._scan(addr)
+
+    async def _scan(self, addr):
+        print("Scanning:", addr)
+        ec, history = await self.client.history(addr)
+        if ec:
+            print("Couldn't fetch history:", ec, file=sys.stderr)
+            return
+
+        self._model.cache.history[addr] = history
 
     async def _start_scan(self):
         for pocket in self._pockets.values():
@@ -193,15 +326,11 @@ class Account:
 
     def create_pocket(self, pocket_name):
         pocket_model = self._model.add_pocket(pocket_name)
+
         if pocket_model is None:
             return ErrorCode.duplicate
-        index = len(self._pockets)
+        [pocket_model.add_key() for i in range(self._settings.gap_limit)]
 
-        key = pocket_model.main_key
-        pocket = Pocket(key, index, self._settings, self)
-        pocket.generate_keys()
-        self._pockets[pocket_name] = pocket
-        self.save()
         return None
 
     def delete_pocket(self, pocket_name):
@@ -386,6 +515,7 @@ class Wallet:
                 self._account.spawn_scan()
 
     async def stop(self):
+        self._account.stop()
         self._stopped = True
 
     @property
@@ -413,13 +543,14 @@ class Wallet:
         self._account = Account(account_name, account_filename, password,
                                 self._context, self._settings)
         self._account.set_seed(seed, wordlist, use_testnet)
-        self._account.save()
         self._account.start()
         self._account.spawn_scan()
         self._account_names.append(account_name)
 
         # Create master pocket
         self._account.create_pocket(self._settings.master_pocket_name)
+
+        self._account.save()
 
         return None, []
 
@@ -539,5 +670,7 @@ class Wallet:
         return None, []
 
     async def stop(self):
+        if self._account is not None:
+            self._account.stop()
         self._context.stop()
 
