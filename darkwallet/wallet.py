@@ -10,6 +10,8 @@ import darkwallet.util
 from libbitcoin import bc
 from darkwallet import sodium
 
+flatten = lambda l: [item for sublist in l for item in sublist]
+
 def write_json(filename, json_object):
     open(filename, "w").write(json.dumps(json_object))
 
@@ -117,7 +119,8 @@ class AccountModel:
         return self.pocket(name)
 
     def pocket(self, name):
-        return PocketModel(self._model["pockets"][name], self.testnet)
+        return PocketModel(self._model["pockets"][name],
+                           self.cache.history, self.testnet)
 
     @property
     def pocket_names(self):
@@ -125,8 +128,8 @@ class AccountModel:
 
     @property
     def pockets(self):
-        return [PocketModel(pocket, self.testnet) for pocket in
-                self._model["pockets"].values()]
+        return [PocketModel(pocket, self.cache.history, self.testnet)
+                for pocket in self._model["pockets"].values()]
 
     @property
     def cache(self):
@@ -134,8 +137,9 @@ class AccountModel:
 
 class PocketModel:
 
-    def __init__(self, model, testnet):
+    def __init__(self, model, history_model, testnet):
         self._model = model
+        self._history_model = history_model
         self._testnet = testnet
 
         # Json converts dict keys to strings. Convert them back.
@@ -188,6 +192,18 @@ class PocketModel:
 
     def __len__(self):
         return len(self._model["keys"])
+
+    @property
+    def history(self):
+        addrs = [addr for addr in self.addrs if addr in self._history_model]
+        result = {}
+        for addr in addrs:
+            result[addr] = self._history_model[addr]
+        return result
+
+    def balance(self):
+        rows = flatten(self.history.values())
+        return sum(row.value for row in rows)
 
 class CacheModel:
 
@@ -244,12 +260,14 @@ class HistoryModel:
             })
         self._model[addr] = history_model
 
+    def __contains__(self, addr):
+        return addr in self._model
+
     def values(self):
         return [[HistoryRowModel(row) for row in history]
                 for history in self._model.values()]
 
     def all(self, from_height=0):
-        flatten = lambda l: [item for sublist in l for item in sublist]
         all_rows = flatten(self.values())
         all_rows = [row for row in all_rows if row.height >= from_height]
         return all_rows
@@ -277,6 +295,10 @@ class HistoryRowModel:
     @property
     def height(self):
         return self.object["height"]
+
+    @property
+    def value(self):
+        return self._model["value"]
 
 class TransactionModel:
 
@@ -401,12 +423,8 @@ class Account:
         remaining = desired_len - len(pocket)
         [pocket.add_key() for i in range(remaining)]
 
-    async def _start_scan(self):
-        for pocket in self._pockets.values():
-            await pocket.scan()
-
     def list_pockets(self):
-        return list(self._pockets.keys())
+        return self._model.pocket_names
 
     def create_pocket(self, pocket_name):
         pocket_model = self._model.add_pocket(pocket_name)
@@ -417,6 +435,7 @@ class Account:
         return None
 
     def delete_pocket(self, pocket_name):
+        # TODO
         if pocket_name not in self._pockets:
             return ErrorCode.not_found
         del self._pockets[pocket_name]
@@ -431,6 +450,7 @@ class Account:
         return all_addresses
 
     def receive(self, pocket_name=None):
+        # TODO
         if pocket_name is not None and pocket_name not in self._pockets:
             return ErrorCode.not_found, []
         if pocket_name is None:
@@ -439,14 +459,17 @@ class Account:
 
     @property
     def total_balance(self):
-        return sum(pocket.balance() for pocket in self._pockets.values())
+        return sum(pocket.balance() for pocket in self._model.pockets)
 
     def balance(self, pocket_name=None):
-        if pocket_name is not None and pocket_name not in self._pockets:
-            return ErrorCode.not_found, []
         if pocket_name is None:
             return None, [self.total_balance]
-        return None, [self._pockets[pocket_name].balance()]
+
+        pocket = self._model.pocket(pocket_name)
+        if pocket is None:
+            return ErrorCode.not_found, []
+
+        return None, [pocket.balance()]
 
     @property
     def combined_history(self):
@@ -459,6 +482,7 @@ class Account:
         return result
 
     def history(self, pocket_name=None):
+        # TODO
         if pocket_name is not None and pocket_name not in self._pockets:
             return ErrorCode.not_found, []
         if pocket_name is None:
