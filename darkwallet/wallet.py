@@ -131,6 +131,9 @@ class AccountModel:
         return [PocketModel(pocket, self.cache.history, self.testnet)
                 for pocket in self._model["pockets"].values()]
 
+    def delete_pocket(self, name):
+        del self._model["pockets"][name]
+
     @property
     def cache(self):
         return CacheModel(self._model["cache"])
@@ -181,7 +184,7 @@ class PocketModel:
 
     @property
     def addrs(self):
-        return self._model["addrs"].values()
+        return list(self._model["addrs"].values())
 
     def index(self, addr):
         addrs_map = self._model["addrs"].items()
@@ -282,6 +285,10 @@ class HistoryRowModel:
         self._model = model
 
     @property
+    def model(self):
+        return self._model
+
+    @property
     def object(self):
         if self._model["type"] == "output":
             return self._model["output"]
@@ -360,6 +367,7 @@ class Account:
         self.client = Client(self._context, url, client_settings)
 
     def stop(self):
+        self.save()
         self._stopped = True
 
     def spawn_scan(self):
@@ -435,11 +443,10 @@ class Account:
         return None
 
     def delete_pocket(self, pocket_name):
-        # TODO
-        if pocket_name not in self._pockets:
+        if pocket_name not in self._model.pocket_names:
             return ErrorCode.not_found
-        del self._pockets[pocket_name]
-        self.save()
+
+        self._model.delete_pocket(pocket_name)
         return None
 
     @property
@@ -450,12 +457,14 @@ class Account:
         return all_addresses
 
     def receive(self, pocket_name=None):
-        # TODO
-        if pocket_name is not None and pocket_name not in self._pockets:
-            return ErrorCode.not_found, []
         if pocket_name is None:
             return None, [self.all_addresses]
-        return None, [self._pockets[pocket_name].addresses]
+
+        pocket = self._model.pocket(pocket_name)
+        if pocket is None:
+            return ErrorCode.not_found, []
+
+        return None, [pocket.addrs]
 
     @property
     def total_balance(self):
@@ -473,22 +482,31 @@ class Account:
 
     @property
     def combined_history(self):
-        result = []
-        for pocket in self._pockets.values():
-            result.extend(pocket.history())
-        def get_key(item):
-            return item[2]
-        result.sort(key=get_key)
-        return result
+        return flatten(self._query_history(pocket_name)
+                       for pocket_name in self._model.pocket_names)
 
     def history(self, pocket_name=None):
-        # TODO
-        if pocket_name is not None and pocket_name not in self._pockets:
-            return ErrorCode.not_found, []
         if pocket_name is None:
             # Most recent history from all pockets
             return None, self.combined_history
-        return None, self._pockets[pocket_name].history()
+
+        history = self._query_history(pocket_name)
+        if history is None:
+            return ErrorCode.not_found, []
+
+        return None, history
+
+    def _query_history(self, pocket_name):
+        pocket = self._model.pocket(pocket_name)
+        if pocket is None:
+            return None
+
+        history = flatten(
+            [
+                row.model for row in history
+            ] for addr, history in pocket.history.items() if history
+        )
+        return history
 
     async def get_height(self):
         return await self.client.last_height()
@@ -736,12 +754,16 @@ class Wallet:
     async def create_pocket(self, pocket):
         if self._account is None:
             return ErrorCode.no_active_account_set, []
-        return self._account.create_pocket(pocket), []
+        ec = self._account.create_pocket(pocket)
+        self._settings.save()
+        return ec, []
 
     async def delete_pocket(self, pocket):
         if self._account is None:
             return ErrorCode.no_active_account_set, []
-        return self._account.delete_pocket(pocket), []
+        ec = self._account.delete_pocket(pocket)
+        self._settings.save()
+        return ec, []
 
     async def send(self, dests, from_pocket=None):
         if self._account is None:
