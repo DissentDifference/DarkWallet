@@ -3,7 +3,13 @@ import json
 import sys
 import websockets
 
-from libbitcoin.server_fake_async import TornadoContext
+import zmq.asyncio
+loop = zmq.asyncio.ZMQEventLoop()
+asyncio.set_event_loop(loop)
+
+import libbitcoin.server
+context = libbitcoin.server.Context()
+
 from darkwallet.wallet_interface import WalletInterface
 
 class Gateway:
@@ -11,7 +17,6 @@ class Gateway:
     def __init__(self, settings):
         self.settings = settings
 
-        context = TornadoContext()
         self._wallet = WalletInterface(context, settings)
 
     async def _accept(self, websocket, path):
@@ -47,11 +52,13 @@ class Gateway:
             ("params" in request and type(request["params"]) == list)
 
     async def serve(self):
-        return await websockets.serve(self._accept, "localhost", 8888)
+        port = self.settings.port
+        return await websockets.serve(self._accept, "localhost", port)
 
 def start_ws(settings):
     gateway = Gateway(settings)
 
-    asyncio.get_event_loop().run_until_complete(gateway.serve())
-    asyncio.get_event_loop().run_forever()
+    tasks = [gateway.serve()] + context.tasks()
+
+    asyncio.get_event_loop().run_until_complete(asyncio.wait(tasks))
 

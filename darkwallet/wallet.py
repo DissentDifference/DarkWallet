@@ -30,33 +30,31 @@ class ErrorCode(enum.Enum):
     duplicate = 4
     not_found = 5
 
-class Account:
+class AccountModel:
 
-    def __init__(self, name, filename, password, context, settings):
-        self.name = name
+    def __init__(self, filename):
         self._filename = filename
-        self._password = bytes(password, "utf-8")
-        self._pockets = {}
-        self._context = context
-        self._settings = settings
+        self._model = {}
 
-    def brainwallet_wordlist(self):
-        return self._wordlist
+    def load(self, password):
+        encrypted_wallet_info = read_json(self._filename)
+        salt, nonce, ciphertext = (
+            bytes.fromhex(encrypted_wallet_info["salt"]),
+            bytes.fromhex(encrypted_wallet_info["nonce"]),
+            bytes.fromhex(encrypted_wallet_info["encrypted_wallet"])
+        )
+        message = sodium.decrypt(salt, nonce, ciphertext, password)
+        if message is None:
+            return False
+        message = str(message, "ascii")
+        self._model = json.loads(message)
+        print("Loading:", json.dumps(self_model, indent=2))
+        return True
 
-    def set_seed(self, seed, wordlist, testnet):
-        self._seed = seed
-        self._wordlist = wordlist
-        self.testnet = testnet
-        prefixes = bc.HdPrivate.mainnet
-        if self.testnet:
-            prefixes = bc.HdPrivate.testnet
-        self._root_key = bc.HdPrivate.from_seed(self._seed, prefixes)
-
-    def save(self):
-        wallet_info = self._save_values()
-        print("Saving:", json.dumps(wallet_info, indent=2))
-        message = bytes(json.dumps(wallet_info), "utf-8")
-        salt, nonce, ciphertext = sodium.encrypt(message, self._password)
+    def save(self, password):
+        print("Saving:", json.dumps(self._model, indent=2))
+        message = bytes(json.dumps(self._model), "utf-8")
+        salt, nonce, ciphertext = sodium.encrypt(message, password)
         encrypted_wallet_info = {
             "encrypted_wallet": ciphertext.hex(),
             "salt": salt.hex(),
@@ -64,41 +62,114 @@ class Account:
         }
         write_json(self._filename, encrypted_wallet_info)
 
-    def load(self):
-        encrypted_wallet_info = read_json(self._filename)
-        salt, nonce, ciphertext = (
-            bytes.fromhex(encrypted_wallet_info["salt"]),
-            bytes.fromhex(encrypted_wallet_info["nonce"]),
-            bytes.fromhex(encrypted_wallet_info["encrypted_wallet"])
-        )
-        message = sodium.decrypt(salt, nonce, ciphertext, self._password)
-        if message is None:
-            return False
-        message = str(message, "ascii")
-        wallet_info = json.loads(message)
-        print("Loading:", json.dumps(wallet_info, indent=2))
-        self._load_values(wallet_info)
-        return True
+    @property
+    def seed(self):
+        return bytes.fromhex(self._model["seed"])
+    @seed.setter
+    def seed(self, seed):
+        self._model["seed"] = seed.hex()
 
-    def _save_values(self):
-        pockets = {}
-        for pocket_name, pocket in self._pockets.items():
-            pockets[pocket_name] = pocket.serialize()
-        return {
-            "seed": self._seed.hex(),
-            "wordlist": self._wordlist,
-            "pockets": pockets,
-            "testnet": self.testnet
+    @property
+    def wordlist(self):
+        return self._model["wordlist"]
+    @wordlist.setter
+    def wordlist(self, wordlist):
+        self._model["wordlist"] = wordlist
+
+    @property
+    def testnet(self):
+        return self._model["testnet"]
+    @testnet.setter
+    def testnet(self, testnet):
+        self._model["testnet"] = testnet
+
+    @property
+    def root_key(self):
+        prefixes = bc.HdPrivate.mainnet
+        if self.testnet:
+            prefixes = bc.HdPrivate.testnet
+        return bc.HdPrivate.from_seed(self.seed, prefixes)
+
+    def add_pocket(self, name):
+        if name in self._model["pockets"]:
+            return None
+        i = len(self._model["pockets"])
+        self._model["pockets"][name] = {
+            "keys": [
+            ]
+            "addrs": {
+            }
         }
+        key = self.root_key.derive_private(i + bc.hd_first_hardened_key)
+        self.pocket(name).index = i
+        return self.pocket(name)
 
-    def _load_values(self, wallet_info):
-        seed = bytes.fromhex(wallet_info["seed"])
-        wordlist = wallet_info["wordlist"]
-        testnet = wallet_info["testnet"]
-        self.set_seed(seed, wordlist, testnet)
-        for pocket_name, pocket_values in wallet_info["pockets"].items():
-            pocket = Pocket.from_json(pocket_values, self._settings, self)
-            self._pockets[pocket_name] = pocket
+    def pocket(self, name):
+        return PocketModel(self._model["pockets"][name], self.testnet)
+
+class PocketModel:
+
+    def __init__(self, model, testnet):
+        self._model = model
+        self._testnet = testnet
+
+    @property
+    def main_key(self):
+        return bc.HdPrivate.from_string(self._model["main_key"])
+    @main_key.setter
+    def main_key(self, main_key):
+        self._model["main_key"] = main_key.encoded()
+
+    @property
+    def index(self):
+        return self._model["index"]
+    @index.setter
+    def index(self, index):
+        self._model["index"] = index
+
+    def add_key(self):
+        i = len(self._model["keys"])
+        key = self.main_key.derive_private(i + bc.hd_first_hardened_key)
+        self._model["keys"].append(key)
+
+        version = bc.EcPrivate.mainnet
+        if self._parent.testnet:
+            version = bc.EcPrivate.testnet
+        addr = hd_private_key_address(key, version)
+        self._model["addrs"][i] = addr
+
+    def key(self, i):
+        return bc.HdPrivate.from_string(self._model["keys"][i])
+
+    def addr(self, i):
+        return self._model["addrs"][i]
+
+class Account:
+
+    def __init__(self, name, filename, password, context, settings):
+        self.name = name
+        self._pockets = {}
+        self._context = context
+        self._settings = settings
+
+        self._filename = filename
+        self._password = bytes(password, "utf-8")
+
+        self._model = AccountModel(filename)
+
+    def brainwallet_wordlist(self):
+        return self._model.wordlist
+
+    def set_seed(self, seed, wordlist, testnet):
+        self._model.seed = seed
+        self._model.wordlist = wordlist
+        self._model.testnet = testnet
+
+    def save(self):
+        self._model.save(self._password)
+
+    def load(self):
+        return self._model.load(self._password)
 
     def start(self):
         client_settings = libbitcoin.server.ClientSettings()
@@ -110,7 +181,8 @@ class Account:
         self.client = Client(self._context, url, client_settings)
 
     def spawn_scan(self):
-        self._context.spawn(self._start_scan)
+        #self._context.spawn(self._start_scan)
+        pass
 
     async def _start_scan(self):
         for pocket in self._pockets.values():
@@ -120,10 +192,12 @@ class Account:
         return list(self._pockets.keys())
 
     def create_pocket(self, pocket_name):
-        if pocket_name in self._pockets:
+        pocket_model = self._model.add_pocket(pocket_name)
+        if pocket_model is None:
             return ErrorCode.duplicate
         index = len(self._pockets)
-        key = self._root_key.derive_private(index + bc.hd_first_hardened_key)
+
+        key = pocket_model.main_key
         pocket = Pocket(key, index, self._settings, self)
         pocket.generate_keys()
         self._pockets[pocket_name] = pocket
@@ -301,9 +375,9 @@ class Wallet:
         self._account_names = darkwallet.util.list_files(self.accounts_path)
         self._account = None
 
-        self._context.spawn(self._poller)
+        #self._context.spawn(self._poller)
         self._stopped = False
-        self._context.register(self)
+        #self._context.register(self)
 
     async def _poller(self):
         while self._stopped:
