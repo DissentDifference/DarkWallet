@@ -570,8 +570,6 @@ class Account:
 
         tx = await self._build_transaction(out, dests, from_pocket)
 
-        print(tx.to_data().hex())
-
         # signature, input
         await self._sign(tx)
 
@@ -594,6 +592,8 @@ class Account:
 
     async def _build_transaction(self, out, dests, change_pocket=None):
         tx = bc.Transaction()
+        tx.set_version(1)
+        tx.set_locktime(0)
 
         inputs = [self._create_input(point) for point in out.points]
         tx.set_inputs(inputs)
@@ -606,6 +606,7 @@ class Account:
 
     def _create_input(self, point):
         input = bc.Input()
+        input.set_sequence(bc.max_uint32)
         input.set_previous_output(point)
 
         # Set the input script.
@@ -661,22 +662,14 @@ class Account:
         tx.set_inputs(inputs)
 
     async def _sign_input(self, tx, input, input_index):
-        # Sighash.
         prevout_script = self._get_prevout_script(input)
-
-        sighash = bc.Script.generate_signature_hash(
-            tx, input_index, prevout_script, bc.SighashAlgorithm.all)
 
         # Secret.
         key = self._get_private_key(prevout_script)
         secret = key.secret()
 
-        signature = secret.sign(sighash)
-        assert signature is not None
-
-        signature += bytes([bc.SighashAlgorithm.all.value])
-
-        return signature
+        return bc.Script.create_endorsement(
+            secret, prevout_script, tx, input_index, bc.SighashAlgorithm.all)
 
     def _get_prevout_script(self, input):
         # Find tx and output.
