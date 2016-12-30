@@ -669,10 +669,12 @@ class Account:
 
         # Secret.
         key = self._get_private_key(prevout_script)
-        secret = self._key_to_private(key)
+        secret = key.secret()
 
-        signature = bc.sign_message(sighash.data, secret)
+        signature = secret.sign(sighash)
         assert signature is not None
+
+        signature += bytes([bc.SighashAlgorithm.all.value])
 
         return signature
 
@@ -705,12 +707,6 @@ class Account:
             p2kh = bc.PaymentAddress.testnet_p2kh
             p2sh = bc.PaymentAddress.testnet_p2sh
         return bc.PaymentAddress.extract(prevout_script, p2kh, p2sh)
-
-    def _key_to_private(self, key):
-        version = bc.EcPrivate.mainnet
-        if self._model.testnet:
-            version = bc.EcPrivate.testnet
-        return bc.EcPrivate.from_secret(key.secret(), version)
 
 def create_brainwallet_seed():
     entropy = os.urandom(16)
