@@ -142,6 +142,13 @@ class AccountModel:
     def all_unspent_inputs():
         return flatten(pocket.unspent_inputs for pocket in self.pockets)
 
+    def find_key(self, addr):
+        for pocket in self.pockets:
+            key = pocket.key_from_addr(addr)
+            if key is not None:
+                return key
+        return None
+
 class PocketModel:
 
     def __init__(self, model, history_model, testnet):
@@ -184,6 +191,8 @@ class PocketModel:
 
     def key_from_addr(self, addr):
         i = self.addr_index(addr)
+        if i is None:
+            return None
         return self.key(i)
 
     @property
@@ -191,8 +200,12 @@ class PocketModel:
         return list(self._model["addrs"].values())
 
     def addr_index(self, addr):
+        if isinstance(addr, bc.PaymentAddress):
+            addr = addr.encoded()
         addrs_map = self._model["addrs"].items()
         results = [item[0] for item in addrs_map if item[1] == addr]
+        if not results:
+            return None
         assert len(results) == 1
         index = results[0]
         return index
@@ -349,8 +362,8 @@ class TransactionModel:
 
     def __getitem__(self, tx_hash):
         if isinstance(tx_hash, bc.HashDigest):
-            tx_hash = str(tx_hash)
-        tx_data = self._model[tx_hash]
+            tx_hash = bc.encode_hash(tx_hash)
+        tx_data = bytes.fromhex(self._model[tx_hash])
         tx = bc.Transaction.from_data(tx_data)
         assert tx is not None
         assert tx.is_valid()
@@ -457,6 +470,7 @@ class Account:
         for addr in pocket.addrs:
             if self._model.cache.history[addr]:
                 i = pocket.addr_index(addr)
+                assert i is not None
                 max_i = max(i, max_i)
         desired_len = max_i + 1 + self._settings.gap_limit
         remaining = desired_len - len(pocket)
@@ -554,9 +568,14 @@ class Account:
         if out is None:
             return ErrorCode.not_enough_funds
 
-        tx_data = await self._build_transaction(out, dests, from_pocket)
+        tx = await self._build_transaction(out, dests, from_pocket)
 
-        print(tx_data.hex())
+        print(tx.to_data().hex())
+
+        # signature, input
+        await self._sign(tx)
+
+        print("signed:", tx.to_data().hex())
 
         return None
 
@@ -583,7 +602,7 @@ class Account:
         outputs += [self._create_change_output(change_pocket, out.change)]
         tx.set_outputs(outputs)
 
-        return tx.to_data()
+        return tx
 
     def _create_input(self, point):
         input = bc.Input()
@@ -621,6 +640,77 @@ class Account:
         output.set_script(script)
 
         return output
+
+    async def _sign(self, tx):
+        inputs = tx.inputs()
+
+        for input_index, input in enumerate(inputs):
+            signature = await self._sign_input(tx, input, input_index)
+
+            public_key = self._get_public_key(input)
+
+            script = bc.Script.from_ops([
+                bc.Operation.from_data(signature),
+                bc.Operation.from_data(public_key)
+            ])
+
+            assert bc.Script.is_sign_key_hash_pattern(script.operations())
+
+            input.set_script(script)
+
+        tx.set_inputs(inputs)
+
+    async def _sign_input(self, tx, input, input_index):
+        # Sighash.
+        prevout_script = self._get_prevout_script(input)
+
+        sighash = bc.Script.generate_signature_hash(
+            tx, input_index, prevout_script, bc.SighashAlgorithm.all)
+
+        # Secret.
+        key = self._get_private_key(prevout_script)
+        secret = self._key_to_private(key)
+
+        signature = bc.sign_message(sighash.data, secret)
+        assert signature is not None
+
+        return signature
+
+    def _get_prevout_script(self, input):
+        # Find tx and output.
+        previous_output_point = input.previous_output()
+        tx_hash, previous_index = (previous_output_point.hash(),
+                                   previous_output_point.index())
+        previous_tx = self._model.cache.transactions[tx_hash]
+        # Address from output.
+        previous_output = previous_tx.outputs()[previous_index]
+        prevout_script = previous_output.script()
+        return prevout_script
+
+    def _get_private_key(self, prevout_script):
+        # Get key for that address.
+        address = self._extract(prevout_script)
+        key = self._model.find_key(address)
+        return key
+
+    def _get_public_key(self, input):
+        prevout_script = self._get_prevout_script(input)
+        private_key = self._get_private_key(prevout_script)
+        return private_key.to_public().point()
+
+    def _extract(self, prevout_script):
+        p2kh = bc.PaymentAddress.mainnet_p2kh
+        p2sh = bc.PaymentAddress.mainnet_p2sh
+        if self._model.testnet:
+            p2kh = bc.PaymentAddress.testnet_p2kh
+            p2sh = bc.PaymentAddress.testnet_p2sh
+        return bc.PaymentAddress.extract(prevout_script, p2kh, p2sh)
+
+    def _key_to_private(self, key):
+        version = bc.EcPrivate.mainnet
+        if self._model.testnet:
+            version = bc.EcPrivate.testnet
+        return bc.EcPrivate.from_secret(key.secret(), version)
 
 def create_brainwallet_seed():
     entropy = os.urandom(16)
