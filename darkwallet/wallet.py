@@ -575,11 +575,10 @@ class Wallet:
             return ErrorCode.no_active_account_set, []
         return None, self._account.brainwallet_wordlist()
 
-    async def restore_account(self, account, brainwallet,
+    async def restore_account(self, account_name, wordlist,
                               password, use_testnet):
-        print("restore_account", account, brainwallet, password)
+        print("restore_account", account_name, wordlist, password)
         # Create new seed
-        wordlist = brainwallet.strip().split(" ")
         if not bc.validate_mnemonic(wordlist):
             return ErrorCode.invalid_brainwallet, []
         seed = bc.decode_mnemonic(wordlist).data
@@ -588,7 +587,7 @@ class Wallet:
         # Init current account object
         self._account = Account(account_name, account_filename, password,
                                 self._context, self._settings)
-        self._account.set_seed(seed, worldlist, use_testnet)
+        self._account.set_seed(seed, wordlist, use_testnet)
         self._account.save()
         self._account.start()
         self._account.spawn_scan()

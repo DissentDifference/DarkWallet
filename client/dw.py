@@ -58,7 +58,7 @@ async def seed(args):
 async def restore(args):
     assert args.account
     account = args.account[0]
-    brainwallet = input("Brainwallet: ")
+    brainwallet = input("Brainwallet: ").split(" ")
     password = enter_confirmed_password()
     if password is None:
         print("Passwords don't match.")
