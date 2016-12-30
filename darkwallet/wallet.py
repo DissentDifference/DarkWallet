@@ -124,7 +124,7 @@ class AccountModel:
 
     @property
     def pocket_names(self):
-        return self._model["pockets"].keys()
+        return list(self._model["pockets"].keys())
 
     @property
     def pockets(self):
@@ -179,14 +179,14 @@ class PocketModel:
         return bc.HdPrivate.from_string(self._model["keys"][i])
 
     def key_from_addr(self, addr):
-        index = self.index(addr)
-        return self.key(index)
+        i = self.addr_index(addr)
+        return self.key(i)
 
     @property
     def addrs(self):
         return list(self._model["addrs"].values())
 
-    def index(self, addr):
+    def addr_index(self, addr):
         addrs_map = self._model["addrs"].items()
         results = [item[0] for item in addrs_map if item[1] == addr]
         assert len(results) == 1
@@ -423,7 +423,7 @@ class Account:
         max_i = -1
         for addr in pocket.addrs:
             if self._model.cache.history[addr]:
-                i = pocket.index(addr)
+                i = pocket.addr_index(addr)
                 max_i = max(i, max_i)
         desired_len = max_i + 1 + self._settings.gap_limit
         remaining = desired_len - len(pocket)
