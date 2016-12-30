@@ -204,8 +204,8 @@ async def send(args):
         "command": "dw_send",
         "id": create_random_id(),
         "params": [
-            args.pocket,
-            [(address, amount)]
+            [(address, amount)],
+            args.pocket
         ]
     })
     print("Sending:", message)
@@ -345,12 +345,12 @@ async def main():
     parser_pocket.set_defaults(func=pocket)
 
     parser_send = subparsers.add_parser("send", help="Send Bitcoins")
-    parser_send.add_argument("pocket", nargs="?", metavar="POCKET",
-                             default=None, help="Pocket name to send from")
     parser_send.add_argument("address", nargs=1, metavar="ADDRESS",
                              help="Address for send in the format")
     parser_send.add_argument("amount", nargs=1, metavar="AMOUNT",
                              help="Amount for send in the format")
+    parser_send.add_argument("pocket", nargs="?", metavar="POCKET",
+                             default=None, help="Pocket name to send from")
     parser_send.set_defaults(func=send)
 
     parser_recv = subparsers.add_parser("recv", help="Receive Bitcoins")

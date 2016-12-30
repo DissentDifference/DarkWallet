@@ -2,6 +2,7 @@ import asyncio
 import enum
 import json
 import os
+import random
 import sys
 
 import libbitcoin.server
@@ -32,6 +33,7 @@ class ErrorCode(enum.Enum):
     no_active_account_set = 3
     duplicate = 4
     not_found = 5
+    not_enough_funds = 6
 
 class AccountModel:
 
@@ -64,7 +66,6 @@ class AccountModel:
         return True
 
     def save(self, password):
-        print(self._model)
         print("Saving:", json.dumps(self._model, indent=2))
         message = bytes(json.dumps(self._model), "utf-8")
         salt, nonce, ciphertext = sodium.encrypt(message, password)
@@ -138,6 +139,9 @@ class AccountModel:
     def cache(self):
         return CacheModel(self._model["cache"])
 
+    def all_unspent_inputs():
+        return flatten(pocket.unspent_inputs for pocket in self.pockets)
+
 class PocketModel:
 
     def __init__(self, model, history_model, testnet):
@@ -204,9 +208,20 @@ class PocketModel:
             result[addr] = self._history_model[addr]
         return result
 
+    @property
+    def flat_history(self):
+        return flatten(self.history.values())
+
     def balance(self):
-        rows = flatten(self.history.values())
-        return sum(row.value for row in rows)
+        return sum(row.value for row in self.flat_history)
+
+    @property
+    def unspent_inputs(self):
+        # [(point, value), ...]
+        unspent = [row for row in self.flat_history
+                   if row.is_unspent_output()]
+        unspent = [((row.hash, row.index), row.value) for row in unspent]
+        return unspent
 
 class CacheModel:
 
@@ -277,7 +292,7 @@ class HistoryModel:
 
     @property
     def transaction_hashes(self):
-        return [row.transaction_hash for row in self.all()]
+        return [row.hash for row in self.all()]
 
 class HistoryRowModel:
 
@@ -290,14 +305,30 @@ class HistoryRowModel:
 
     @property
     def object(self):
-        if self._model["type"] == "output":
+        if self.is_output():
             return self._model["output"]
-        elif self._model["type"] == "spend":
+        elif self.is_spend():
             return self._model["spend"]
 
+    def is_output(self):
+        return self._model["type"] == "output"
+
+    def is_spend(self):
+        return self._model["type"] == "spend"
+
+    def is_spent_output(self):
+        return self.is_output() and self.spend is not None
+
+    def is_unspent_output(self):
+        return self.is_output() and not self.is_spent_output()
+
     @property
-    def transaction_hash(self):
+    def hash(self):
         return bc.hash_literal(self.object["hash"])
+
+    @property
+    def index(self):
+        return self.object["index"]
 
     @property
     def height(self):
@@ -306,6 +337,10 @@ class HistoryRowModel:
     @property
     def value(self):
         return self._model["value"]
+
+    @property
+    def spend(self):
+        return self._model["spend"]
 
 class TransactionModel:
 
@@ -375,11 +410,10 @@ class Account:
     async def _check_updates(self):
         while not self._stopped:
             await self._sync_history()
-            print("Scanned.")
+            #print("Scanned.")
             await self._fill_cache()
-            print("Cache filled.")
-            print("--------------")
-            print(json.dumps(self._model._model, indent=2))
+            #print("Cache filled.")
+            #print(json.dumps(self._model._model, indent=2))
             await self._generate_keys()
             await asyncio.sleep(5)
 
@@ -393,7 +427,7 @@ class Account:
             await self._scan(addr)
 
     async def _scan(self, addr):
-        print("Scanning:", addr)
+        #print("Scanning:", addr)
         ec, history = await self.client.history(addr)
         if ec:
             print("Couldn't fetch history:", ec, file=sys.stderr)
@@ -407,7 +441,6 @@ class Account:
                 await self._grab_tx(tx_hash)
 
     async def _grab_tx(self, tx_hash):
-        print(bc.encode_hash(tx_hash))
         ec, tx = await self.client.transaction(tx_hash.data)
         if ec:
             print("Couldn't fetch transaction:", ec, file=sys.stderr)
@@ -505,6 +538,89 @@ class Account:
 
     async def get_height(self):
         return await self.client.last_height()
+
+    async def send(self, dests, from_pocket):
+        # Input:
+        #   [(point, value), ...]
+        #   minimum_value
+        # Returns:
+        #   [point, ...], change
+        print("Sending:", dests)
+
+        # If no pocket, select all unspent
+        unspent = self._unspent_inputs(from_pocket)
+
+        out = self._select_outputs(unspent, dests)
+        if out is None:
+            return ErrorCode.not_enough_funds
+
+        tx_data = await self._build_transaction(out, dests, from_pocket)
+
+        print(tx_data.hex())
+
+        return None
+
+    def _unspent_inputs(self, from_pocket):
+        pocket = self._model.pocket(from_pocket)
+        if pocket is None:
+            return self._model.all_unspent_inputs()
+        return pocket.unspent_inputs
+
+    def _select_outputs(self, unspent, dests):
+        minimum_value = sum(value for addr, value in dests)
+        out = bc.select_outputs(unspent, minimum_value)
+        if not out.points:
+            return None
+        return out
+
+    async def _build_transaction(self, out, dests, change_pocket=None):
+        tx = bc.Transaction()
+
+        inputs = [self._create_input(point) for point in out.points]
+        tx.set_inputs(inputs)
+
+        outputs = [self._create_output(addr, value) for addr, value in dests]
+        outputs += [self._create_change_output(change_pocket, out.change)]
+        tx.set_outputs(outputs)
+
+        return tx.to_data()
+
+    def _create_input(self, point):
+        input = bc.Input()
+        input.set_previous_output(point)
+
+        # Set the input script.
+        return input
+
+    def _create_output(self, addr, value):
+        output = bc.Output()
+        output.set_value(value)
+
+        # Set the output script.
+        address = bc.PaymentAddress.from_string(addr)
+        script = bc.Script.from_ops(
+            bc.Script.to_pay_key_hash_pattern(address.hash))
+        output.set_script(script)
+        return output
+
+    def _create_change_output(self, change_pocket, change_value):
+        # Choose random pocket if there's no change pocket specified.
+        if change_pocket is None:
+            change_pocket = random.choice(self._model.pocket_names)
+
+        pocket = self._model.pocket(change_pocket)
+
+        output = bc.Output()
+        output.set_value(change_value)
+
+        # Send change to random unspent address in pocket
+        address = bc.PaymentAddress.from_string(
+            random.choice(pocket.addrs))
+        script = bc.Script.from_ops(
+            bc.Script.to_pay_key_hash_pattern(address.hash))
+        output.set_script(script)
+
+        return output
 
 def create_brainwallet_seed():
     entropy = os.urandom(16)
@@ -658,8 +774,9 @@ class Wallet:
     async def send(self, dests, from_pocket=None):
         if self._account is None:
             return ErrorCode.no_active_account_set, []
-        print("send", dests, from_pocket)
-        return None, []
+        dests = [(addr, int(amount)) for addr, amount in dests]
+        ec = await self._account.send(dests, from_pocket)
+        return ec, []
 
     async def receive(self, pocket):
         if self._account is None:
