@@ -107,7 +107,8 @@ async def history(args):
     async with websockets.connect('ws://localhost:8888') as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
-    print(response)
+    #print(response)
+    print(json.dumps(response["result"], indent=2))
     return 0
 
 async def account(args):

@@ -559,7 +559,6 @@ class Account:
         #   minimum_value
         # Returns:
         #   [point, ...], change
-        print("Sending:", dests)
 
         # If no pocket, select all unspent
         unspent = self._unspent_inputs(from_pocket)
@@ -573,9 +572,9 @@ class Account:
         # signature, input
         await self._sign(tx)
 
-        print("signed:", tx.to_data().hex())
-
-        return None
+        print("Broadcasting:", tx.to_data().hex())
+        ec = await self.client.broadcast(tx.to_data())
+        return ec
 
     def _unspent_inputs(self, from_pocket):
         pocket = self._model.pocket(from_pocket)
