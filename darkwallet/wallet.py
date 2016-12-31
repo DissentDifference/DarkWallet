@@ -553,7 +553,7 @@ class Account:
     async def get_height(self):
         return await self.client.last_height()
 
-    async def send(self, dests, from_pocket):
+    async def send(self, dests, from_pocket, fee):
         # Input:
         #   [(point, value), ...]
         #   minimum_value
@@ -563,7 +563,10 @@ class Account:
         # If no pocket, select all unspent
         unspent = self._unspent_inputs(from_pocket)
 
-        out = self._select_outputs(unspent, dests)
+        # Amount that we are sending + the fee we will pay.
+        minimum_value = sum(value for addr, value in dests) + fee
+
+        out = self._select_outputs(unspent, minimum_value)
         if out is None:
             return ErrorCode.not_enough_funds
 
@@ -574,7 +577,7 @@ class Account:
 
         print("Broadcasting:", tx.to_data().hex())
         ec = await self.client.broadcast(tx.to_data())
-        return ec
+        return ec, tx.hash().data.hex()
 
     def _unspent_inputs(self, from_pocket):
         pocket = self._model.pocket(from_pocket)
@@ -582,8 +585,7 @@ class Account:
             return self._model.all_unspent_inputs()
         return pocket.unspent_inputs
 
-    def _select_outputs(self, unspent, dests):
-        minimum_value = sum(value for addr, value in dests)
+    def _select_outputs(self, unspent, minimum_value):
         out = bc.select_outputs(unspent, minimum_value)
         if not out.points:
             return None
@@ -849,12 +851,12 @@ class Wallet:
         self._settings.save()
         return ec, []
 
-    async def send(self, dests, from_pocket=None):
+    async def send(self, dests, from_pocket, fee):
         if self._account is None:
             return ErrorCode.no_active_account_set, []
         dests = [(addr, int(amount)) for addr, amount in dests]
-        ec = await self._account.send(dests, from_pocket)
-        return ec, []
+        ec, tx_hash = await self._account.send(dests, from_pocket, fee)
+        return ec, [tx_hash]
 
     async def receive(self, pocket):
         if self._account is None:

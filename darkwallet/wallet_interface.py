@@ -157,13 +157,13 @@ class DwDeletePocket(WalletInterfaceCallback):
 class DwSend(WalletInterfaceCallback):
 
     def initialize(self, params):
-        if len(params) != 2:
+        if len(params) != 3:
             return False
-        self._dests, self._pocket = params
+        self._dests, self._pocket, self._fee = params
         return True
 
     async def make_query(self):
-        return await self._wallet.send(self._dests, self._pocket)
+        return await self._wallet.send(self._dests, self._pocket, self._fee)
 
 class DwReceive(WalletInterfaceCallback):
 

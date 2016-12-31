@@ -206,7 +206,8 @@ async def send(args):
         "id": create_random_id(),
         "params": [
             [(address, amount)],
-            args.pocket
+            args.pocket,
+            args.fee
         ]
     })
     print("Sending:", message)
@@ -350,8 +351,10 @@ async def main():
                              help="Address for send in the format")
     parser_send.add_argument("amount", nargs=1, metavar="AMOUNT",
                              help="Amount for send in the format")
-    parser_send.add_argument("pocket", nargs="?", metavar="POCKET",
-                             default=None, help="Pocket name to send from")
+    parser_send.add_argument("--pocket", "-p", dest="pocket",
+                             help="Pocket name to send from", default=None)
+    parser_send.add_argument("--fee", "-f", dest="fee", type=int,
+                             help="Fee to pay", default=0)
     parser_send.set_defaults(func=send)
 
     parser_recv = subparsers.add_parser("recv", help="Receive Bitcoins")
