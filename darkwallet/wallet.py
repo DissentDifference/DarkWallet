@@ -120,6 +120,8 @@ class AccountModel:
         return self.pocket(name)
 
     def pocket(self, name):
+        if name not in self.pocket_names:
+            return None
         return PocketModel(self._model["pockets"][name],
                            self.cache.history, self.testnet)
 
@@ -139,7 +141,7 @@ class AccountModel:
     def cache(self):
         return CacheModel(self._model["cache"])
 
-    def all_unspent_inputs():
+    def all_unspent_inputs(self):
         return flatten(pocket.unspent_inputs for pocket in self.pockets)
 
     def find_key(self, addr):
@@ -576,7 +578,7 @@ class Account:
 
         out = self._select_outputs(unspent, minimum_value)
         if out is None:
-            return ErrorCode.not_enough_funds
+            return ErrorCode.not_enough_funds, None
 
         tx = await self._build_transaction(out, dests, from_pocket)
 
@@ -585,7 +587,7 @@ class Account:
 
         print("Broadcasting:", tx.to_data().hex())
         ec = await self.client.broadcast(tx.to_data())
-        return ec, tx.hash().data.hex()
+        return ec, bc.encode_hash(tx.hash())
 
     def _unspent_inputs(self, from_pocket):
         pocket = self._model.pocket(from_pocket)
