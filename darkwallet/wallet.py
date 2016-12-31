@@ -498,15 +498,23 @@ class Account:
     def addrs(self):
         return flatten(pocket.addrs for pocket in self._model.pockets)
 
+    def is_used(self, addr):
+        if addr not in self._model.cache.history.addrs:
+            return False
+        return True if self._model.cache.history[addr] else False
+
     def receive(self, pocket_name=None):
+        filter_unused = lambda addrs: list(filter(
+            lambda addr: not self.is_used(addr), addrs))
+
         if pocket_name is None:
-            return None, [self.addrs]
+            return None, [filter_unused(self.addrs)]
 
         pocket = self._model.pocket(pocket_name)
         if pocket is None:
             return ErrorCode.not_found, []
 
-        return None, [pocket.addrs]
+        return None, [filter_unused(addr for addr in pocket.addrs)]
 
     @property
     def total_balance(self):
