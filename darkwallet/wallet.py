@@ -112,11 +112,14 @@ class AccountModel:
             "keys": [
             ],
             "addrs": {
+            },
+            "stealth": {
             }
         }
         key = self.root_key.derive_private(i + bc.hd_first_hardened_key)
         self.pocket(name).index = i
         self.pocket(name).main_key = key
+        self.pocket(name).create_stealth()
         return self.pocket(name)
 
     def pocket(self, name):
@@ -188,6 +191,17 @@ class PocketModel:
         addr = hd_private_key_address(key, version)
         self._model["addrs"][i] = addr
 
+    def create_stealth(self):
+        model = self._model["stealth"]
+
+        first_key = self.main_key.derive_private(0 + bc.hd_first_hardened_key)
+        scan_private = first_key.derive_private(0 + bc.hd_first_hardened_key)
+        spend_private = first_key.derive_private(1 + bc.hd_first_hardened_key)
+        model["scan_private"] = scan_private.secret().data.hex()
+        model["spend_private"] = [
+            spend_private.secret().data.hex()
+        ]
+
     def key(self, i):
         return bc.HdPrivate.from_string(self._model["keys"][i])
 
@@ -211,6 +225,34 @@ class PocketModel:
         assert len(results) == 1
         index = results[0]
         return index
+
+    @property
+    def stealth_scan_private(self):
+        return bc.EcSecret.from_bytes(bytes.fromhex(
+            self._model["stealth"]["scan_private"]))
+
+    @property
+    def stealth_scan_public(self):
+        return self.stealth_scan_private.to_public()
+
+    @property
+    def stealth_spend_privates(self):
+        unhex = lambda spend_hex: bytes.fromhex(spend_hex)
+        convert = lambda spend_data: bc.EcSecret.from_bytes(unhex(spend_data))
+        spend_keys = self._model["stealth"]["spend_private"]
+        return [convert(spend_data) for spend_data in spend_keys]
+
+    @property
+    def stealth_spend_publics(self):
+        return [spend_private.to_public() for spend_private
+                in self.stealth_spend_privates]
+
+    @property
+    def stealth_address(self):
+        assert self.stealth_spend_publics
+        spend_public = self.stealth_spend_publics[0]
+        return bc.StealthAddress.from_tuple(
+            None, self.stealth_scan_public, [spend_public])
 
     def __len__(self):
         return len(self._model["keys"])
@@ -517,6 +559,16 @@ class Account:
             return ErrorCode.not_found, []
 
         return None, [filter_unused(addr for addr in pocket.addrs)]
+
+    def stealth(self, pocket_name=None):
+        if pocket_name is None:
+            pocket_name = random.choice(self._model.pocket_names)
+
+        pocket = self._model.pocket(pocket_name)
+        if pocket is None:
+            return ErrorCode.not_found, None
+
+        return None, str(pocket.stealth_address)
 
     @property
     def total_balance(self):
@@ -873,6 +925,12 @@ class Wallet:
             return ErrorCode.no_active_account_set, []
         ec, addresses = self._account.receive(pocket)
         return ec, addresses
+
+    async def stealth(self, pocket):
+        if self._account is None:
+            return ErrorCode.no_active_account_set, []
+        ec, stealth_address = self._account.stealth(pocket)
+        return ec, [stealth_address]
 
     async def get_height(self):
         if self._account is None:

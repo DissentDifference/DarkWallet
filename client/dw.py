@@ -232,6 +232,21 @@ async def recv(args):
     print(response)
     return 0
 
+async def stealth(args):
+    message = json.dumps({
+        "command": "dw_stealth",
+        "id": create_random_id(),
+        "params": [
+            args.pocket
+        ]
+    })
+    print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
+    return 0
+
 async def get_height(args):
     message = json.dumps({
         "command": "dw_get_height",
@@ -361,6 +376,12 @@ async def main():
     parser_recv.add_argument("pocket", nargs="?", metavar="POCKET",
                              default=None, help="Pocket name")
     parser_recv.set_defaults(func=recv)
+
+    parser_stealth = subparsers.add_parser("stealth",
+                                           help="Show stealth address")
+    parser_stealth.add_argument("pocket", nargs="?", metavar="POCKET",
+                             default=None, help="Pocket name")
+    parser_stealth.set_defaults(func=stealth)
 
     parser_get_height = subparsers.add_parser("get_height",
         help="Get height of the last block")
