@@ -247,6 +247,22 @@ async def stealth(args):
     print(response)
     return 0
 
+async def valid_addr(args):
+    assert args.address
+    message = json.dumps({
+        "command": "dw_validate_address",
+        "id": create_random_id(),
+        "params": [
+            args.address[0]
+        ]
+    })
+    print("Sending:", message)
+    async with websockets.connect('ws://localhost:8888') as websocket:
+        await websocket.send(message)
+        response = json.loads(await websocket.recv())
+    print(response)
+    return 0
+
 async def get_height(args):
     message = json.dumps({
         "command": "dw_get_height",
@@ -382,6 +398,12 @@ async def main():
     parser_stealth.add_argument("pocket", nargs="?", metavar="POCKET",
                              default=None, help="Pocket name")
     parser_stealth.set_defaults(func=stealth)
+
+    parser_valid_addr = subparsers.add_parser("validate_address",
+        help="Validate a Bitcoin address")
+    parser_valid_addr.add_argument("address", nargs=1, metavar="ADDRESS",
+                             help="Address for send in the format")
+    parser_valid_addr.set_defaults(func=valid_addr)
 
     parser_get_height = subparsers.add_parser("get_height",
         help="Get height of the last block")

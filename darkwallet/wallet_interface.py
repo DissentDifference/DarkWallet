@@ -1,3 +1,4 @@
+from libbitcoin import bc
 import darkwallet.wallet
 
 class WalletInterfaceCallback:
@@ -187,6 +188,37 @@ class DwStealth(WalletInterfaceCallback):
     async def make_query(self):
         return await self._wallet.stealth(self._pocket)
 
+class DwValidateAddress(WalletInterfaceCallback):
+
+    def initialize(self, params):
+        if len(params) != 1:
+            return False
+        self._addr = params[0]
+        return True
+
+    async def make_query(self):
+        if self.payment_address is not None:
+            payaddr = self.payment_address
+            if payaddr.version() == bc.PaymentAddress.mainnet_p2kh:
+                return None, ["mainnet_p2kh"]
+            elif payaddr.version() == bc.PaymentAddress.mainnet_p2sh:
+                return None, ["mainnet_p2sh"]
+            elif payaddr.version() == bc.PaymentAddress.testnet_p2kh:
+                return None, ["testnet_p2kh"]
+            elif payaddr.version() == bc.PaymentAddress.testnet_p2sh:
+                return None, ["testnet_p2sh"]
+        elif self.stealth_address is not None:
+            return None, ["stealth"]
+        return None, ["invalid"]
+
+    @property
+    def payment_address(self):
+        return bc.PaymentAddress.from_string(self._addr)
+
+    @property
+    def stealth_address(self):
+        return bc.StealthAddress.from_string(self._addr)
+
 class DwGetHeight(WalletInterfaceCallback):
 
     def initialize(self, params):
@@ -240,6 +272,7 @@ class WalletInterface:
         "dw_send":              DwSend,
         "dw_receive":           DwReceive,
         "dw_stealth":           DwStealth,
+        "dw_validate_address":  DwValidateAddress,
         "dw_get_height":        DwGetHeight,
         "dw_get_setting":       DwGetSetting,
         "dw_set_setting":       DwSetSetting,
