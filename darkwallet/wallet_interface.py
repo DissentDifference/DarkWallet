@@ -1,5 +1,5 @@
-from libbitcoin import bc
 import darkwallet.wallet
+from darkwallet.address_validator import AddressValidator, AddressType
 
 class WalletInterfaceCallback:
 
@@ -197,27 +197,8 @@ class DwValidateAddress(WalletInterfaceCallback):
         return True
 
     async def make_query(self):
-        if self.payment_address is not None:
-            payaddr = self.payment_address
-            if payaddr.version() == bc.PaymentAddress.mainnet_p2kh:
-                return None, ["mainnet_p2kh"]
-            elif payaddr.version() == bc.PaymentAddress.mainnet_p2sh:
-                return None, ["mainnet_p2sh"]
-            elif payaddr.version() == bc.PaymentAddress.testnet_p2kh:
-                return None, ["testnet_p2kh"]
-            elif payaddr.version() == bc.PaymentAddress.testnet_p2sh:
-                return None, ["testnet_p2sh"]
-        elif self.stealth_address is not None:
-            return None, ["stealth"]
-        return None, ["invalid"]
-
-    @property
-    def payment_address(self):
-        return bc.PaymentAddress.from_string(self._addr)
-
-    @property
-    def stealth_address(self):
-        return bc.StealthAddress.from_string(self._addr)
+        validator = AddressValidator(self._addr)
+        return None, [validator.type().name]
 
 class DwGetHeight(WalletInterfaceCallback):
 
