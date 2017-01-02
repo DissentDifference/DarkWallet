@@ -65,8 +65,12 @@ class AccountModel:
             return False
         message = str(message, "ascii")
         self._model = json.loads(message)
+        self._post_load()
         print("Loading:", json.dumps(self._model, indent=2))
         return True
+
+    def _post_load(self):
+        self.current_index = (None, None)
 
     def save(self, password):
         print("Saving:", json.dumps(self._model, indent=2))
@@ -78,6 +82,35 @@ class AccountModel:
             "nonce": nonce.hex()
         }
         write_json(self._filename, encrypted_wallet_info)
+
+    @property
+    def current_index(self):
+        return self.current_height, self.current_hash
+    @current_index.setter
+    def current_index(self, current_index):
+        block_height, block_hash = current_index
+        if block_hash is not None:
+            block_hash = bc.encode_hash(block_hash)
+        self._model["current_index"] = (block_height, block_hash)
+
+    @property
+    def current_height(self):
+        return self._model["current_index"][0]
+
+    @property
+    def current_hash(self):
+        block_hash = self._model["current_index"][1]
+        if block_hash is None:
+            return None
+        return bc.hash_literal(block_hash)
+
+    def compare_indexes(self, index):
+        block_height, block_hash = self.current_index
+        if block_height != index[0]:
+            return False
+        if block_hash != index[1]:
+            return False
+        return True
 
     @property
     def seed(self):
@@ -470,6 +503,8 @@ class Account:
         loop.create_task(self._check_updates())
 
     async def _check_updates(self):
+        self.current_height = None
+        self.current_hash = None
         while not self._stopped:
             await self._sync_history()
             #print("Scanned.")
@@ -477,8 +512,43 @@ class Account:
             #print("Cache filled.")
             #print(json.dumps(self._model._model, indent=2))
             await self._generate_keys()
-            await self._query_stealth()
+            await self._query_blockchain_reorg()
             await asyncio.sleep(5)
+
+    async def _query_blockchain_reorg(self):
+        head = await self._query_blockchain_head()
+        if head is None:
+            return
+        height, header = head
+        index = height, header.hash()
+        if self._model.compare_indexes(index):
+            # Nothing changed.
+            return
+        if header.previous_block_hash == self._model.current_hash:
+            print("New block added.")
+            from_height = height
+        else:
+            print("Blockchain reorganization event.")
+            from_height = 0
+        self._finish_reorg(index)
+
+    async def _query_blockchain_head(self):
+        ec, height = await self.client.last_height()
+        if ec:
+            print("Error: querying last_height:", ec, file=sys.stderr)
+            return None
+        ec, header = await self.client.block_header(height)
+        if ec:
+            print("Error: querying header:", ec, file=sys.stderr)
+            return None
+        header = bc.Header.from_data(header)
+        return height, header
+
+    async def _new_chain_state(self, index):
+        await self._query_stealth()
+
+    def _finish_reorg(self, index):
+        self._model.current_index = index
 
     async def _sync_history(self):
         addrs = []
