@@ -18,7 +18,7 @@ def create_random_id():
     MAX_UINT32 = 4294967295
     return random.randint(0, MAX_UINT32)
 
-async def init(args):
+async def init(args, websockets_path):
     assert args.account
     account = args.account[0]
     password = enter_confirmed_password()
@@ -35,13 +35,13 @@ async def init(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def seed(args):
+async def seed(args, websockets_path):
     message = json.dumps({
         "command": "dw_seed",
         "id": create_random_id(),
@@ -49,13 +49,13 @@ async def seed(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def restore(args):
+async def restore(args, websockets_path):
     assert args.account
     account = args.account[0]
     brainwallet = input("Brainwallet: ").split(" ")
@@ -74,13 +74,13 @@ async def restore(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def balance(args):
+async def balance(args, websockets_path):
     message = json.dumps({
         "command": "dw_balance",
         "id": create_random_id(),
@@ -89,13 +89,13 @@ async def balance(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def history(args):
+async def history(args, websockets_path):
     message = json.dumps({
         "command": "dw_history",
         "id": create_random_id(),
@@ -104,14 +104,14 @@ async def history(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     #print(response)
     print(json.dumps(response["result"], indent=2))
     return 0
 
-async def account(args):
+async def account(args, websockets_path):
     message = json.dumps({
         "command": "dw_list_accounts",
         "id": create_random_id(),
@@ -119,13 +119,13 @@ async def account(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def dw_set(args):
+async def dw_set(args, websockets_path):
     assert args.account
     account = args.account[0]
     password = getpass.getpass()
@@ -138,13 +138,13 @@ async def dw_set(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def rm(args):
+async def rm(args, websockets_path):
     assert args.account
     account = args.account[0]
     message = json.dumps({
@@ -155,13 +155,13 @@ async def rm(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def pocket(args):
+async def pocket(args, websockets_path):
     if args.pocket is None and args.delete:
         print("Need a pocket specified when deleting a pocket.",
               file=sys.stderr)
@@ -190,13 +190,13 @@ async def pocket(args):
             ]
         })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def send(args):
+async def send(args, websockets_path):
     assert args.address
     assert args.amount
     address = args.address[0]
@@ -211,13 +211,13 @@ async def send(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def recv(args):
+async def recv(args, websockets_path):
     message = json.dumps({
         "command": "dw_receive",
         "id": create_random_id(),
@@ -226,13 +226,13 @@ async def recv(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def stealth(args):
+async def stealth(args, websockets_path):
     message = json.dumps({
         "command": "dw_stealth",
         "id": create_random_id(),
@@ -241,13 +241,13 @@ async def stealth(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def valid_addr(args):
+async def valid_addr(args, websockets_path):
     assert args.address
     message = json.dumps({
         "command": "dw_validate_address",
@@ -257,13 +257,13 @@ async def valid_addr(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def get_height(args):
+async def get_height(args, websockets_path):
     message = json.dumps({
         "command": "dw_get_height",
         "id": create_random_id(),
@@ -271,13 +271,13 @@ async def get_height(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
     return 0
 
-async def setting(args):
+async def setting(args, websockets_path):
     name = args.name[0]
     value = args.value
     if value is None:
@@ -298,12 +298,12 @@ async def setting(args):
             ]
         })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
         response = json.loads(await websocket.recv())
     print(response)
 
-async def stop(args):
+async def stop(args, websockets_path):
     message = json.dumps({
         "command": "dw_stop",
         "id": create_random_id(),
@@ -311,7 +311,7 @@ async def stop(args):
         ]
     })
     print("Sending:", message)
-    async with websockets.connect('ws://localhost:8888') as websocket:
+    async with websockets.connect(websockets_path) as websocket:
         await websocket.send(message)
 
 async def main():
@@ -428,7 +428,11 @@ async def main():
     if args.func is None:
         parser.print_help()
         return -1
-    return await args.func(args)
+    port = args.port
+    if port is None:
+        port = 8888
+    websockets_path = "ws://localhost:%s" % port
+    return await args.func(args, websockets_path)
 
 asyncio.get_event_loop().run_until_complete(main())
 
