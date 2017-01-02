@@ -506,12 +506,6 @@ class Account:
         self.current_height = None
         self.current_hash = None
         while not self._stopped:
-            await self._sync_history()
-            #print("Scanned.")
-            await self._fill_cache()
-            #print("Cache filled.")
-            #print(json.dumps(self._model._model, indent=2))
-            await self._generate_keys()
             await self._query_blockchain_reorg()
             await asyncio.sleep(5)
 
@@ -530,6 +524,7 @@ class Account:
         else:
             print("Blockchain reorganization event.")
             from_height = 0
+        await self._update(from_height)
         self._finish_reorg(index)
 
     async def _query_blockchain_head(self):
@@ -544,8 +539,14 @@ class Account:
         header = bc.Header.from_data(header)
         return height, header
 
-    async def _new_chain_state(self, index):
-        await self._query_stealth()
+    async def _update(self, from_height):
+        await self._sync_history()
+        #print("Scanned.")
+        await self._fill_cache()
+        #print("Cache filled.")
+        #print(json.dumps(self._model._model, indent=2))
+        await self._generate_keys()
+        await self._query_stealth(from_height)
 
     def _finish_reorg(self, index):
         self._model.current_index = index
@@ -596,15 +597,16 @@ class Account:
         remaining = desired_len - len(pocket)
         [pocket.add_key() for i in range(remaining)]
 
-    async def _query_stealth(self):
+    async def _query_stealth(self, from_height):
         genesis_height = 0
         if self._model.testnet:
             genesis_height = 1063370
+        from_height = max(genesis_height, from_height)
         # We haven't implemented prefixes yet.
         prefix = libbitcoin.server.Binary(0, b"")
-        print("Starting query.")
-        ec, rows = await self.client.stealth(prefix, genesis_height)
-        print("Query done.")
+        print("Starting stealth query. [from_height=%s]" % from_height)
+        ec, rows = await self.client.stealth(prefix, from_height)
+        print("Stealth query done.")
         if ec:
             print("Error: query stealth:", ec, file=sys.stderr)
             return
