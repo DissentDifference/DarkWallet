@@ -243,14 +243,24 @@ class PocketModel:
             spend_private.secret().data.hex()
         ]
 
-    def key(self, i):
-        return bc.HdPrivate.from_string(self._model["keys"][i])
+    def _get_secret(self, i):
+        return bc.HdPrivate.from_string(self._model["keys"][i]).secret()
 
-    def key_from_addr(self, addr):
-        i = self.addr_index(addr)
-        if i is None:
+    def _get_stealth_secret(self, address):
+        address = address.encoded()
+        if address not in self.addrs_from_stealth:
             return None
-        return self.key(i)
+        key_data = self._model["stealth"]["keys"][address]
+        return bc.EcSecret.from_string(key_data)
+
+    def key_from_addr(self, address):
+        i = self.addr_index(address)
+        if i is not None:
+            return self._get_secret(i)
+        stealth_key = self._get_stealth_secret(address)
+        if stealth_key is not None:
+            return stealth_key
+        return None
 
     @property
     def addrs(self):
@@ -835,7 +845,8 @@ class Account:
         tx.set_inputs(inputs)
 
         outputs = [self._create_outputs(addr, value) for addr, value in dests]
-        outputs += [self._create_change_output(change_pocket, out.change)]
+        if out.change:
+            outputs += [self._create_change_output(change_pocket, out.change)]
         random.shuffle(outputs)
         outputs = flatten(outputs)
         tx.set_outputs(outputs)
@@ -895,7 +906,7 @@ class Account:
         output = bc.Output()
         output.set_value(change_value)
 
-        unused_addrs = self.unused_addrs(change_pocket)
+        unused_addrs = self.unused_addrs(pocket)
         # Send change to random unspent address in pocket
         address = bc.PaymentAddress.from_string(
             random.choice(unused_addrs))
@@ -928,8 +939,7 @@ class Account:
         prevout_script = self._get_prevout_script(input)
 
         # Secret.
-        key = self._get_private_key(prevout_script)
-        secret = key.secret()
+        secret = self._get_secret(prevout_script)
 
         return bc.Script.create_endorsement(
             secret, prevout_script, tx, input_index, bc.SighashAlgorithm.all)
@@ -945,16 +955,15 @@ class Account:
         prevout_script = previous_output.script()
         return prevout_script
 
-    def _get_private_key(self, prevout_script):
+    def _get_secret(self, prevout_script):
         # Get key for that address.
         address = self._extract(prevout_script)
-        key = self._model.find_key(address)
-        return key
+        return self._model.find_key(address)
 
     def _get_public_key(self, input):
         prevout_script = self._get_prevout_script(input)
-        private_key = self._get_private_key(prevout_script)
-        return private_key.to_public().point()
+        secret = self._get_secret(prevout_script)
+        return secret.to_public().data
 
     def _extract(self, prevout_script):
         p2kh = bc.PaymentAddress.mainnet_p2kh
