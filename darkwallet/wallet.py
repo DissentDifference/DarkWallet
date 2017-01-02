@@ -71,6 +71,9 @@ class AccountModel:
 
     def _post_load(self):
         self.current_index = (None, None)
+        # TODO: debug for wallet without this field. Remove soon.
+        for pocket in self.pockets:
+            pocket._model["stealth"]["keys"] = {}
 
     def save(self, password):
         print("Saving:", json.dumps(self._model, indent=2))
@@ -251,7 +254,15 @@ class PocketModel:
 
     @property
     def addrs(self):
+        return self.addrs_nonstealth + self.addrs_from_stealth
+
+    @property
+    def addrs_nonstealth(self):
         return list(self._model["addrs"].values())
+
+    @property
+    def addrs_from_stealth(self):
+        return list(self._model["stealth"]["keys"].keys())
 
     def addr_index(self, addr):
         if isinstance(addr, bc.PaymentAddress):
@@ -291,6 +302,17 @@ class PocketModel:
     @property
     def stealth_address(self):
         return self.stealth_receiver.generate_stealth_address()
+
+    def add_stealth_key(self, address, key):
+        self._model["stealth"]["keys"][address.encoded()] = key.data.hex()
+
+    def get_stealth_key(self, address):
+        if isinstance(address, bc.PaymentAddress):
+            address = address.encoded()
+        key_data = bytes.fromhex(self._model["stealth"]["keys"][address])
+        key = bc.EcSecret.from_bytes(key_data)
+        assert key.data.hex() == self._model["stealth"]["keys"][address]
+        return key
 
     def __len__(self):
         return len(self._model["keys"])
@@ -524,7 +546,7 @@ class Account:
         else:
             print("Blockchain reorganization event.")
             from_height = 0
-        await self._update(from_height)
+        await self._update(index, from_height)
         self._finish_reorg(index)
 
     async def _query_blockchain_head(self):
@@ -539,28 +561,29 @@ class Account:
         header = bc.Header.from_data(header)
         return height, header
 
-    async def _update(self, from_height):
-        await self._sync_history()
+    async def _update(self, index, from_height):
+        await self._query_stealth(from_height)
+        await self._sync_history(from_height)
         #print("Scanned.")
         await self._fill_cache()
         #print("Cache filled.")
         #print(json.dumps(self._model._model, indent=2))
         await self._generate_keys()
-        await self._query_stealth(from_height)
+        print("Updated:", json.dumps(self._model._model, indent=2))
 
     def _finish_reorg(self, index):
         self._model.current_index = index
 
-    async def _sync_history(self):
+    async def _sync_history(self, from_height):
         addrs = []
         for pocket_name in self._model.pocket_names:
             pocket = self._model.pocket(pocket_name)
             addrs.extend(pocket.addrs)
 
         for addr in addrs:
-            await self._scan(addr)
+            await self._scan(addr, from_height)
 
-    async def _scan(self, addr):
+    async def _scan(self, addr, from_height):
         #print("Scanning:", addr)
         ec, history = await self.client.history(addr)
         if ec:
@@ -591,7 +614,8 @@ class Account:
         for addr in pocket.addrs:
             if self._model.cache.history[addr]:
                 i = pocket.addr_index(addr)
-                assert i is not None
+                if i is None:
+                    continue
                 max_i = max(i, max_i)
         desired_len = max_i + 1 + self._settings.gap_limit
         remaining = desired_len - len(pocket)
@@ -641,7 +665,8 @@ class Account:
         assert original_address == derived_address
         print("Found match:", derived_address)
         
-        # Fetch transaction
+        private_key = receiver.derive_private(ephemeral_public)
+        pocket.add_stealth_key(original_address, private_key)
 
     def list_pockets(self):
         return self._model.pocket_names
@@ -662,8 +687,16 @@ class Account:
         return None
 
     @property
-    def addrs(self):
-        return flatten(pocket.addrs for pocket in self._model.pockets)
+    def all_unused_addrs(self):
+        unused_addrs = [self.unused_addrs(pocket) for pocket
+                        in self._model.pockets]
+        return flatten(unused_addrs)
+
+    def _filter_unused(self, addrs):
+        return [address for address in addrs if not self.is_used(address)]
+
+    def unused_addrs(self, pocket):
+        return self._filter_unused(pocket.addrs_nonstealth)
 
     def is_used(self, addr):
         if addr not in self._model.cache.history.addrs:
@@ -671,17 +704,14 @@ class Account:
         return True if self._model.cache.history[addr] else False
 
     def receive(self, pocket_name=None):
-        filter_unused = lambda addrs: list(filter(
-            lambda addr: not self.is_used(addr), addrs))
-
         if pocket_name is None:
-            return None, [filter_unused(self.addrs)]
+            return None, [self.all_unused_addrs]
 
         pocket = self._model.pocket(pocket_name)
         if pocket is None:
             return ErrorCode.not_found, []
 
-        return None, [filter_unused(addr for addr in pocket.addrs)]
+        return None, [self.unused_addrs(pocket)]
 
     def stealth(self, pocket_name=None):
         if pocket_name is None:
@@ -865,9 +895,10 @@ class Account:
         output = bc.Output()
         output.set_value(change_value)
 
+        unused_addrs = self.unused_addrs(change_pocket)
         # Send change to random unspent address in pocket
         address = bc.PaymentAddress.from_string(
-            random.choice(pocket.addrs))
+            random.choice(unused_addrs))
         script = bc.Script.from_ops(
             bc.Script.to_pay_key_hash_pattern(address.hash()))
         output.set_script(script)
