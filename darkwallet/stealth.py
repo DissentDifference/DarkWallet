@@ -26,6 +26,9 @@ class StealthReceiver:
         self.receiver_public = bc.uncover_stealth(
             ephemeral_public, self.scan_private, spend_public)
 
+        if self.receiver_public is None:
+            return None
+
         self.derived_address = bc.PaymentAddress.from_point(
             self.receiver_public, self._version)
         return self.derived_address

@@ -117,6 +117,8 @@ class AccountModel:
             "addrs": {
             },
             "stealth": {
+                "keys": {
+                }
             }
         }
         key = self.root_key.derive_private(i + bc.hd_first_hardened_key)
@@ -246,9 +248,9 @@ class PocketModel:
         assert self.stealth_spend_privates
         spend_private = self.stealth_spend_privates[0]
         return StealthReceiver(self.stealth_scan_private, spend_private,
-                               self._address_version())
+                               self.address_version())
 
-    def _address_version(self):
+    def address_version(self):
         if self._testnet:
             return bc.PaymentAddress.testnet_p2kh
         return bc.PaymentAddress.mainnet_p2kh
@@ -475,6 +477,7 @@ class Account:
             #print("Cache filled.")
             #print(json.dumps(self._model._model, indent=2))
             await self._generate_keys()
+            await self._query_stealth()
             await asyncio.sleep(5)
 
     async def _sync_history(self):
@@ -522,6 +525,51 @@ class Account:
         desired_len = max_i + 1 + self._settings.gap_limit
         remaining = desired_len - len(pocket)
         [pocket.add_key() for i in range(remaining)]
+
+    async def _query_stealth(self):
+        genesis_height = 0
+        if self._model.testnet:
+            genesis_height = 1063370
+        # We haven't implemented prefixes yet.
+        prefix = libbitcoin.server.Binary(0, b"")
+        print("Starting query.")
+        ec, rows = await self.client.stealth(prefix, genesis_height)
+        print("Query done.")
+        if ec:
+            print("Error: query stealth:", ec, file=sys.stderr)
+            return
+        for ephemkey, address_hash, tx_hash in rows:
+            ephemeral_public = bytes([2]) + ephemkey[::-1]
+            ephemeral_public = bc.EcCompressed.from_bytes(ephemeral_public)
+
+            version = bc.PaymentAddress.mainnet_p2kh
+            if self._model.testnet:
+                version = bc.PaymentAddress.testnet_p2kh
+
+            address = bc.PaymentAddress.from_hash(address_hash[::-1],
+                                                  version)
+            
+            tx_hash = bc.HashDigest.from_bytes(tx_hash[::-1])
+
+            await self._scan_all_pockets_for_stealth(ephemeral_public,
+                                                     address, tx_hash)
+
+    async def _scan_all_pockets_for_stealth(self, ephemeral_public,
+                                            original_address, tx_hash):
+        for pocket in self._model.pockets:
+            await self._scan_pocket_for_stealth(pocket, ephemeral_public,
+                                                original_address, tx_hash)
+
+    async def _scan_pocket_for_stealth(self, pocket, ephemeral_public,
+                                       original_address, tx_hash):
+        receiver = pocket.stealth_receiver
+        derived_address = receiver.derive_address(ephemeral_public)
+        if derived_address is None or original_address != derived_address:
+            return
+        assert original_address == derived_address
+        print("Found match:", derived_address)
+        
+        # Fetch transaction
 
     def list_pockets(self):
         return self._model.pocket_names
