@@ -10,6 +10,8 @@ from libbitcoin.server_fake_async import Client
 import darkwallet.util
 from libbitcoin import bc
 from darkwallet import sodium
+from darkwallet.stealth import StealthReceiver, StealthSender
+from darkwallet.address_validator import AddressValidator
 
 flatten = lambda l: [item for sublist in l for item in sublist]
 
@@ -34,6 +36,7 @@ class ErrorCode(enum.Enum):
     duplicate = 4
     not_found = 5
     not_enough_funds = 6
+    invalid_address = 7
 
 class AccountModel:
 
@@ -232,10 +235,6 @@ class PocketModel:
             self._model["stealth"]["scan_private"]))
 
     @property
-    def stealth_scan_public(self):
-        return self.stealth_scan_private.to_public()
-
-    @property
     def stealth_spend_privates(self):
         unhex = lambda spend_hex: bytes.fromhex(spend_hex)
         convert = lambda spend_data: bc.EcSecret.from_bytes(unhex(spend_data))
@@ -243,16 +242,14 @@ class PocketModel:
         return [convert(spend_data) for spend_data in spend_keys]
 
     @property
-    def stealth_spend_publics(self):
-        return [spend_private.to_public() for spend_private
-                in self.stealth_spend_privates]
+    def stealth_receiver(self):
+        assert self.stealth_spend_privates
+        spend_private = self.stealth_spend_privates[0]
+        return StealthReceiver(self.stealth_scan_private, spend_private)
 
     @property
     def stealth_address(self):
-        assert self.stealth_spend_publics
-        spend_public = self.stealth_spend_publics[0]
-        return bc.StealthAddress.from_tuple(
-            None, self.stealth_scan_public, [spend_public])
+        return self.stealth_receiver.generate_stealth_address()
 
     def __len__(self):
         return len(self._model["keys"])
@@ -616,6 +613,10 @@ class Account:
         return await self.client.last_height()
 
     async def send(self, dests, from_pocket, fee):
+        for address, value in dests:
+            validator = AddressValidator(address)
+            if not validator.is_valid():
+                return ErrorCode.invalid_address, None
         # Input:
         #   [(point, value), ...]
         #   minimum_value
