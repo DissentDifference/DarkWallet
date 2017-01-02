@@ -52,6 +52,7 @@ class AccountModel:
                 }
             }
         }
+        self.current_index = (None, None)
 
     def load(self, password):
         encrypted_wallet_info = read_json(self._filename)
@@ -65,15 +66,8 @@ class AccountModel:
             return False
         message = str(message, "ascii")
         self._model = json.loads(message)
-        self._post_load()
         print("Loading:", json.dumps(self._model, indent=2))
         return True
-
-    def _post_load(self):
-        self.current_index = (None, None)
-        # TODO: debug for wallet without this field. Remove soon.
-        for pocket in self.pockets:
-            pocket._model["stealth"]["keys"] = {}
 
     def save(self, password):
         print("Saving:", json.dumps(self._model, indent=2))
