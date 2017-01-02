@@ -245,7 +245,13 @@ class PocketModel:
     def stealth_receiver(self):
         assert self.stealth_spend_privates
         spend_private = self.stealth_spend_privates[0]
-        return StealthReceiver(self.stealth_scan_private, spend_private)
+        return StealthReceiver(self.stealth_scan_private, spend_private,
+                               self._address_version())
+
+    def _address_version(self):
+        if self._testnet:
+            return bc.PaymentAddress.testnet_p2kh
+        return bc.PaymentAddress.mainnet_p2kh
 
     @property
     def stealth_address(self):
