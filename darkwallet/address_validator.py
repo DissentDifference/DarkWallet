@@ -30,6 +30,14 @@ class AddressValidator:
         return (self.is_mainnet() or self.is_testnet() or
                 self.type() == AddressType.other_payment)
 
+    def is_p2kh(self):
+        return (self.type() == AddressType.mainnet_p2kh or
+                self.type() == AddressType.testnet_p2kh)
+
+    def is_p2kh(self):
+        return (self.type() == AddressType.mainnet_p2sh or
+                self.type() == AddressType.testnet_p2sh)
+
     def is_stealth(self):
         return self.type() == AddressType.stealth
 

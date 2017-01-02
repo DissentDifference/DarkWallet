@@ -612,10 +612,26 @@ class Account:
     async def get_height(self):
         return await self.client.last_height()
 
+    def _is_correct_address(self, address):
+        validator = AddressValidator(address)
+        if not validator.is_valid():
+            return False
+
+        if self._model.testnet:
+            if not validator.is_testnet():
+                return False
+        else:
+            if not validator.is_mainnet():
+                return False
+
+        if not validator.is_p2kh() or validator.is_stealth():
+            return False
+
+        return True
+
     async def send(self, dests, from_pocket, fee):
         for address, value in dests:
-            validator = AddressValidator(address)
-            if not validator.is_valid():
+            if not self._is_correct_address(address):
                 return ErrorCode.invalid_address, None
         # Input:
         #   [(point, value), ...]
