@@ -617,6 +617,9 @@ class Account:
         if not validator.is_valid():
             return False
 
+        if validator.is_stealth():
+            return True
+
         if self._model.testnet:
             if not validator.is_testnet():
                 return False
@@ -624,10 +627,7 @@ class Account:
             if not validator.is_mainnet():
                 return False
 
-        if not validator.is_p2kh() or validator.is_stealth():
-            return False
-
-        return True
+        return validator.is_p2kh()
 
     async def send(self, dests, from_pocket, fee):
         for address, value in dests:
@@ -678,8 +678,10 @@ class Account:
         inputs = [self._create_input(point) for point in out.points]
         tx.set_inputs(inputs)
 
-        outputs = [self._create_output(addr, value) for addr, value in dests]
+        outputs = [self._create_outputs(addr, value) for addr, value in dests]
         outputs += [self._create_change_output(change_pocket, out.change)]
+        random.shuffle(outputs)
+        outputs = flatten(outputs)
         tx.set_outputs(outputs)
 
         return tx
@@ -692,16 +694,40 @@ class Account:
         # Set the input script.
         return input
 
-    def _create_output(self, addr, value):
+    def _create_outputs(self, addr, value):
+        validator = AddressValidator(addr)
+        if validator.is_p2kh():
+            return [self._create_p2kh_output(addr, value)]
+        elif validator.is_stealth():
+            return self._create_stealth_outputs(addr, value)
+        assert False
+
+    def _create_p2kh_output(self, addr, value):
         output = bc.Output()
         output.set_value(value)
 
         # Set the output script.
         address = bc.PaymentAddress.from_string(addr)
         script = bc.Script.from_ops(
-            bc.Script.to_pay_key_hash_pattern(address.hash))
+            bc.Script.to_pay_key_hash_pattern(address.hash()))
         output.set_script(script)
         return output
+
+    def _create_stealth_outputs(self, stealth_addr, value):
+        if self._model.testnet:
+            sender = StealthSender(bc.PaymentAddress.testnet_p2kh)
+        else:
+            sender = StealthSender(bc.PaymentAddress.mainnet_p2kh)
+
+        meta_script, send_address = sender.send_to_stealth_address(stealth_addr)
+
+        meta_output = bc.Output()
+        meta_output.set_value(0)
+        meta_output.set_script(meta_script)
+
+        pay_output = self._create_p2kh_output(send_address.encoded(), value)
+
+        return [meta_output, pay_output]
 
     def _create_change_output(self, change_pocket, change_value):
         # Choose random pocket if there's no change pocket specified.
@@ -717,10 +743,10 @@ class Account:
         address = bc.PaymentAddress.from_string(
             random.choice(pocket.addrs))
         script = bc.Script.from_ops(
-            bc.Script.to_pay_key_hash_pattern(address.hash))
+            bc.Script.to_pay_key_hash_pattern(address.hash()))
         output.set_script(script)
 
-        return output
+        return [output]
 
     async def _sign(self, tx):
         inputs = tx.inputs()

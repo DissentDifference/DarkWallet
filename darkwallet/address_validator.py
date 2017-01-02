@@ -34,7 +34,7 @@ class AddressValidator:
         return (self.type() == AddressType.mainnet_p2kh or
                 self.type() == AddressType.testnet_p2kh)
 
-    def is_p2kh(self):
+    def is_p2sh(self):
         return (self.type() == AddressType.mainnet_p2sh or
                 self.type() == AddressType.testnet_p2sh)
 
