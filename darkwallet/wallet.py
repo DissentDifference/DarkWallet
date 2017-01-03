@@ -362,6 +362,9 @@ class HistoryModel:
     def __init__(self, model):
         self._model = model
 
+    def clear(self):
+        self._model.clear()
+
     @property
     def addrs(self):
         return self._model.keys()
@@ -550,6 +553,7 @@ class Account:
         else:
             print("Blockchain reorganization event.")
             from_height = 0
+            self._clear_history()
         await self._update(index, from_height)
         self._finish_reorg(index)
 
@@ -565,6 +569,9 @@ class Account:
         header = bc.Header.from_data(header)
         return height, header
 
+    def _clear_history(self):
+        self._model.cache.history.clear()
+
     async def _update(self, index, from_height):
         await self._query_stealth(from_height)
         await self._sync_history(from_height)
@@ -576,6 +583,7 @@ class Account:
         print("Updated:", json.dumps(self._model._model, indent=2))
 
     def _finish_reorg(self, index):
+        print("Updating current_index to:", index)
         self._model.current_index = index
 
     async def _sync_history(self, from_height):
@@ -616,6 +624,8 @@ class Account:
     def _generate_pocket_keys(self, pocket):
         max_i = -1
         for addr in pocket.addrs:
+            if addr not in self._model.cache.history:
+                continue
             if self._model.cache.history[addr]:
                 i = pocket.addr_index(addr)
                 if i is None:
