@@ -21,7 +21,8 @@ def create_random_id():
 async def init(args, websockets_path):
     assert args.account
     account = args.account[0]
-    password = enter_confirmed_password()
+    #password = enter_confirmed_password()
+    password = "surfing2"
     if password is None:
         print("Passwords don't match.")
         return -1
@@ -128,7 +129,8 @@ async def account(args, websockets_path):
 async def dw_set(args, websockets_path):
     assert args.account
     account = args.account[0]
-    password = getpass.getpass()
+    #password = getpass.getpass()
+    password = "surfing2"
     message = json.dumps({
         "command": "dw_set_account",
         "id": create_random_id(),

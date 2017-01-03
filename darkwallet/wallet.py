@@ -13,6 +13,8 @@ from darkwallet import sodium
 from darkwallet.stealth import StealthReceiver, StealthSender
 from darkwallet.address_validator import AddressValidator
 
+import darkwallet.db as db
+
 flatten = lambda l: [item for sublist in l for item in sublist]
 
 def write_json(filename, json_object):
@@ -21,7 +23,10 @@ def write_json(filename, json_object):
 def read_json(filename):
     return json.loads(open(filename).read())
 
-def hd_private_key_address(key, version):
+def hd_private_key_to_address(key, is_testnet):
+    version = bc.EcPrivate.mainnet
+    if is_testnet:
+        version = bc.EcPrivate.testnet
     secret = key.secret()
     private = bc.EcPrivate.from_secret(secret, version)
     address = bc.PaymentAddress.from_secret(private)
@@ -29,7 +34,6 @@ def hd_private_key_address(key, version):
     return str(address)
 
 class ErrorCode(enum.Enum):
-
     wrong_password = 1
     invalid_brainwallet = 2
     no_active_account_set = 3
@@ -37,48 +41,29 @@ class ErrorCode(enum.Enum):
     not_found = 5
     not_enough_funds = 6
     invalid_address = 7
+    short_password = 8
 
 class AccountModel:
 
     def __init__(self, filename):
         self._filename = filename
-        self._model = {
-            "pockets": {
-            },
-            "cache": {
-                "history": {
-                },
-                "transactions": {
-                }
-            }
-        }
-        self.current_index = (None, None)
+        self._model = None
 
-    def load(self, password):
-        encrypted_wallet_info = read_json(self._filename)
-        salt, nonce, ciphertext = (
-            bytes.fromhex(encrypted_wallet_info["salt"]),
-            bytes.fromhex(encrypted_wallet_info["nonce"]),
-            bytes.fromhex(encrypted_wallet_info["encrypted_wallet"])
-        )
-        message = sodium.decrypt(salt, nonce, ciphertext, password)
-        if message is None:
+    def create(self, wordlist, is_testnet):
+        try:
+            db.create_tables()
+        except db.ImproperlyConfigured:
+            return ErrorCode.short_password
+        self._model = db.Account.create(
+            wordlist=wordlist, is_testnet=is_testnet)
+        return None
+
+    def load(self):
+        try:
+            self._model = db.Account.get()
+        except (db.ImproperlyConfigured, db.DatabaseError):
             return False
-        message = str(message, "ascii")
-        self._model = json.loads(message)
-        print("Loading:", json.dumps(self._model, indent=2))
         return True
-
-    def save(self, password):
-        print("Saving:", json.dumps(self._model, indent=2))
-        message = bytes(json.dumps(self._model), "utf-8")
-        salt, nonce, ciphertext = sodium.encrypt(message, password)
-        encrypted_wallet_info = {
-            "encrypted_wallet": ciphertext.hex(),
-            "salt": salt.hex(),
-            "nonce": nonce.hex()
-        }
-        write_json(self._filename, encrypted_wallet_info)
 
     @property
     def current_index(self):
@@ -86,145 +71,144 @@ class AccountModel:
     @current_index.setter
     def current_index(self, current_index):
         block_height, block_hash = current_index
-        if block_hash is not None:
-            block_hash = bc.encode_hash(block_hash)
-        self._model["current_index"] = (block_height, block_hash)
+        self._model.current_height = block_height
+        self._model.current_hash = block_hash
+        self._model.save()
 
     @property
     def current_height(self):
-        return self._model["current_index"][0]
+        return self._model.current_height
 
     @property
     def current_hash(self):
-        block_hash = self._model["current_index"][1]
-        if block_hash is None:
-            return None
-        return bc.hash_literal(block_hash)
+        return self._model.current_hash
 
     def compare_indexes(self, index):
-        block_height, block_hash = self.current_index
-        if block_height != index[0]:
+        height, hash_ = index
+        if height != self.current_height:
             return False
-        if block_hash != index[1]:
+        if hash_ != self.current_hash:
             return False
         return True
 
     @property
     def seed(self):
-        return bytes.fromhex(self._model["seed"])
-    @seed.setter
-    def seed(self, seed):
-        self._model["seed"] = seed.hex()
+        wordlist = self._model.wordlist
+        return bc.decode_mnemonic(wordlist).data
 
     @property
     def wordlist(self):
-        return self._model["wordlist"]
-    @wordlist.setter
-    def wordlist(self, wordlist):
-        self._model["wordlist"] = wordlist
+        return self._model.wordlist
 
     @property
-    def testnet(self):
-        return self._model["testnet"]
-    @testnet.setter
-    def testnet(self, testnet):
-        self._model["testnet"] = testnet
+    def is_testnet(self):
+        return self._model.is_testnet
 
     @property
     def root_key(self):
         prefixes = bc.HdPrivate.mainnet
-        if self.testnet:
+        if self.is_testnet:
             prefixes = bc.HdPrivate.testnet
         return bc.HdPrivate.from_seed(self.seed, prefixes)
 
     def add_pocket(self, name):
-        if name in self._model["pockets"]:
+        if name in self.pocket_names:
             return None
-        i = len(self._model["pockets"])
-        self._model["pockets"][name] = {
-            "keys": [
-            ],
-            "addrs": {
-            },
-            "stealth": {
-                "keys": {
-                }
-            }
-        }
-        key = self.root_key.derive_private(i + bc.hd_first_hardened_key)
-        self.pocket(name).index = i
-        self.pocket(name).main_key = key
-        self.pocket(name).create_stealth()
-        return self.pocket(name)
+
+        index = len(self.pocket_names)
+        key = self.root_key.derive_private(index + bc.hd_first_hardened_key)
+
+        return PocketModel.create(self._model, name, index, key)
 
     def pocket(self, name):
         if name not in self.pocket_names:
             return None
-        return PocketModel(self._model["pockets"][name],
-                           self.cache.history, self.testnet)
+        model = db.Pocket.get(db.Pocket.name == name)
+        return PocketModel(model)
 
     @property
     def pocket_names(self):
-        return list(self._model["pockets"].keys())
+        return [pocket.name for pocket in self._model.pockets]
 
     @property
     def pockets(self):
-        return [PocketModel(pocket, self.cache.history, self.testnet)
-                for pocket in self._model["pockets"].values()]
+        return [PocketModel(model) for model in self._model.pockets]
 
     def delete_pocket(self, name):
         del self._model["pockets"][name]
 
     @property
     def cache(self):
-        return CacheModel(self._model["cache"])
+        return CacheModel(self._model)
 
     def all_unspent_inputs(self):
         return flatten(pocket.unspent_inputs for pocket in self.pockets)
 
-    def find_key(self, addr):
+    def find_key(self, address):
         for pocket in self.pockets:
-            key = pocket.key_from_addr(addr)
+            key = pocket.key_from_address(address)
             if key is not None:
                 return key
         return None
 
 class PocketModel:
 
-    def __init__(self, model, history_model, testnet):
+    def __init__(self, model):
         self._model = model
-        self._history_model = history_model
-        self._testnet = testnet
 
-        # Json converts dict keys to strings. Convert them back.
-        self._model["addrs"] = {int(key): value for key, value
-                                in self._model["addrs"].items()}
+    @property
+    def is_testnet(self):
+        return self._model.is_testnet
+
+    @classmethod
+    def create(cls, account_model, name, index, key):
+        version = account_model.payment_address_version()
+        scan_key, spend_key = PocketModel._derive_stealth_keys(key)
+        stealth_addr = PocketModel._derive_stealth_address(
+            scan_key, spend_key, version)
+
+        pocket_model = db.Pocket.create(
+            account=account_model,
+            name=name,
+            index=index,
+            main_key=key,
+            stealth_address=stealth_addr,
+            stealth_scan_key=scan_key,
+            stealth_spend_key=spend_key
+        )
+        return cls(pocket_model)
+
+    @staticmethod
+    def _derive_stealth_keys(key):
+        first_key = key.derive_private(0 + bc.hd_first_hardened_key)
+        scan_private = first_key.derive_private(0 + bc.hd_first_hardened_key)
+        spend_private = first_key.derive_private(1 + bc.hd_first_hardened_key)
+        return scan_private.secret(), spend_private.secret()
+
+    @staticmethod
+    def _derive_stealth_address(scan_key, spend_key, version):
+        receiver = StealthReceiver(scan_key, spend_key, version)
+        return receiver.generate_stealth_address()
 
     @property
     def main_key(self):
-        return bc.HdPrivate.from_string(self._model["main_key"])
-    @main_key.setter
-    def main_key(self, main_key):
-        self._model["main_key"] = main_key.encoded()
+        return self._model.main_key
 
     @property
     def index(self):
-        return self._model["index"]
-    @index.setter
-    def index(self, index):
-        self._model["index"] = index
+        return self._model.index
 
     def add_key(self):
-        i = len(self._model["keys"])
-        key = self.main_key.derive_private(i + bc.hd_first_hardened_key)
-        key_str = key.encoded()
-        self._model["keys"].append(key_str)
+        index = self.number_normal_keys()
+        key = self.main_key.derive_private(index + bc.hd_first_hardened_key)
+        address = hd_private_key_to_address(key, self.is_testnet)
 
-        version = bc.EcPrivate.mainnet
-        if self._testnet:
-            version = bc.EcPrivate.testnet
-        addr = hd_private_key_address(key, version)
-        self._model["addrs"][i] = addr
+        db.PocketKeys.create(
+            pocket=self._model,
+            index=index,
+            address=address,
+            key=key
+        )
 
     def create_stealth(self):
         model = self._model["stealth"]
@@ -247,8 +231,8 @@ class PocketModel:
         key_data = self._model["stealth"]["keys"][address]
         return bc.EcSecret.from_string(key_data)
 
-    def key_from_addr(self, address):
-        i = self.addr_index(address)
+    def key_from_address(self, address):
+        i = self.address_index(address)
         if i is not None:
             return self._get_secret(i)
         stealth_key = self._get_stealth_secret(address)
@@ -258,50 +242,44 @@ class PocketModel:
 
     @property
     def addrs(self):
-        return self.addrs_nonstealth + self.addrs_from_stealth
+        return self.addrs_normal + self.addrs_from_stealth
 
     @property
-    def addrs_nonstealth(self):
-        return list(self._model["addrs"].values())
+    def addrs_normal(self):
+        rows = db.PocketKeys.select().where(
+            db.PocketKeys.pocket == self._model)
+        return [row.address for row in rows]
 
     @property
     def addrs_from_stealth(self):
-        return list(self._model["stealth"]["keys"].keys())
+        rows = db.PocketStealthKeys.select().where(
+            db.PocketStealthKeys.pocket == self._model)
+        return [row.address for row in rows]
 
-    def addr_index(self, addr):
-        if isinstance(addr, bc.PaymentAddress):
-            addr = addr.encoded()
-        addrs_map = self._model["addrs"].items()
-        results = [item[0] for item in addrs_map if item[1] == addr]
-        if not results:
+    def address_index(self, address):
+        try:
+            key_model = db.PocketKeys.get(db.PocketKeys.address == address)
+        except db.DoesNotExist:
             return None
-        assert len(results) == 1
-        index = results[0]
-        return index
+
+        return key_model.index
 
     @property
     def stealth_scan_private(self):
-        return bc.EcSecret.from_bytes(bytes.fromhex(
-            self._model["stealth"]["scan_private"]))
+        return self._model.stealth_scan_key
 
     @property
-    def stealth_spend_privates(self):
-        unhex = lambda spend_hex: bytes.fromhex(spend_hex)
-        convert = lambda spend_data: bc.EcSecret.from_bytes(unhex(spend_data))
-        spend_keys = self._model["stealth"]["spend_private"]
-        return [convert(spend_data) for spend_data in spend_keys]
+    def stealth_spend_private(self):
+        return self._model.stealth_spend_key
 
     @property
     def stealth_receiver(self):
-        assert self.stealth_spend_privates
-        spend_private = self.stealth_spend_privates[0]
-        return StealthReceiver(self.stealth_scan_private, spend_private,
+        return StealthReceiver(self.stealth_scan_private,
+                               self.stealth_spend_private,
                                self.address_version())
 
     def address_version(self):
-        if self._testnet:
-            return bc.PaymentAddress.testnet_p2kh
-        return bc.PaymentAddress.mainnet_p2kh
+        return self._model.account.payment_address_version()
 
     @property
     def stealth_address(self):
@@ -318,23 +296,15 @@ class PocketModel:
         assert key.data.hex() == self._model["stealth"]["keys"][address]
         return key
 
-    def __len__(self):
-        return len(self._model["keys"])
+    def number_normal_keys(self):
+        return len(db.PocketKeys.select())
 
     @property
     def history(self):
-        addrs = [addr for addr in self.addrs if addr in self._history_model]
-        result = {}
-        for addr in addrs:
-            result[addr] = self._history_model[addr]
-        return result
-
-    @property
-    def flat_history(self):
-        return flatten(self.history.values())
+        return self._model.history
 
     def balance(self):
-        return sum(row.value for row in self.flat_history)
+        return sum(row.value for row in self.history)
 
     @property
     def unspent_inputs(self):
@@ -346,64 +316,68 @@ class PocketModel:
 
 class CacheModel:
 
-    def __init__(self, model):
-        self._model = model
+    def __init__(self, account_model):
+        self._account_model = account_model
 
     @property
     def history(self):
-        return HistoryModel(self._model["history"])
+        return HistoryModel(self._account_model)
 
     @property
     def transactions(self):
-        return TransactionModel(self._model["transactions"])
+        return TransactionCacheModel(self._account_model)
 
 class HistoryModel:
 
-    def __init__(self, model):
-        self._model = model
+    def __init__(self, account_model):
+        self._account_model = account_model
 
     def clear(self):
-        self._model.clear()
+        account = self._account_model
+        query = db.History.delete().where(db.History.account == account)
+        query.execute()
 
-    @property
-    def addrs(self):
-        return self._model.keys()
+    def __getitem__(self, address):
+        rows = db.History.select().where(db.History.address == address)
+        return [HistoryRowModel(row) for row in rows]
 
-    def __getitem__(self, addr):
-        return [HistoryRowModel(row) for row in self._model[addr]]
-
-    def __setitem__(self, addr, history):
-        history_model = []
+    def add(self, address, history, pocket):
         for output, spend in history:
+            output_hash = bc.HashDigest.from_bytes(output[0].hash)
+
             if spend is None:
                 spend = None
             else:
-                spend = {
-                    "hash": spend[0].hash.hex(),
-                    "index": spend[0].index,
-                    "height": spend[1]
-                }
-                history_model.append({
-                    "type": "spend",
-                    "addr": addr,
-                    "spend": spend,
-                    "value": -output[2],
-                })
-            history_model.append({
-                "type": "output",
-                "addr": addr,
-                "output": {
-                    "hash": output[0].hash.hex(),
-                    "index": output[0].index,
-                    "height": output[1],
-                },
-                "value": output[2],
-                "spend": spend
-            })
-        self._model[addr] = history_model
+                spend_hash = bc.HashDigest.from_bytes(spend[0].hash)
 
-    def __contains__(self, addr):
-        return addr in self._model
+                spend = db.History.create(
+                    account=self._account_model,
+                    pocket=pocket,
+                    address=address,
+
+                    is_output=False,
+
+                    hash=spend_hash,
+                    index=spend[0].index,
+                    height=spend[1]
+                )
+
+            db.History.create(
+                account=self._account_model,
+                pocket=pocket,
+                address=address,
+
+                is_output=True,
+                spend=spend,
+
+                hash=output_hash,
+                index=output[0].index,
+                height=output[1]
+            )
+
+    def __contains__(self, address):
+        rows = db.History.select().where(db.History.address == address)
+        return len(rows) > 0
 
     def values(self):
         return [[HistoryRowModel(row) for row in history]
@@ -416,7 +390,8 @@ class HistoryModel:
 
     @property
     def transaction_hashes(self):
-        return [row.hash for row in self.all()]
+        rows = db.History.select(db.History.hash)
+        return [row.hash for row in rows]
 
 class HistoryRowModel:
 
@@ -427,18 +402,11 @@ class HistoryRowModel:
     def model(self):
         return self._model
 
-    @property
-    def object(self):
-        if self.is_output():
-            return self._model["output"]
-        elif self.is_spend():
-            return self._model["spend"]
-
     def is_output(self):
-        return self._model["type"] == "output"
+        return self._model.is_output
 
     def is_spend(self):
-        return self._model["type"] == "spend"
+        return not self.is_output()
 
     def is_spent_output(self):
         return self.is_output() and self.spend is not None
@@ -448,25 +416,28 @@ class HistoryRowModel:
 
     @property
     def hash(self):
-        return bc.hash_literal(self.object["hash"])
+        return self._model.hash
 
     @property
     def index(self):
-        return self.object["index"]
+        return self._model.index
 
     @property
     def height(self):
-        return self.object["height"]
+        return self._model.height
 
     @property
     def value(self):
-        return self._model["value"]
+        return self._model.value
 
     @property
     def spend(self):
-        return self._model["spend"]
+        spend = self._model.spend
+        if spend is None:
+            return spend
+        return HistoryRowModel(spend)
 
-class TransactionModel:
+class TransactionCacheModel:
 
     def __init__(self, model):
         self._model = model
@@ -474,62 +445,70 @@ class TransactionModel:
     def __getitem__(self, tx_hash):
         if isinstance(tx_hash, bc.HashDigest):
             tx_hash = bc.encode_hash(tx_hash)
-        tx_data = bytes.fromhex(self._model[tx_hash])
-        tx = bc.Transaction.from_data(tx_data)
-        assert tx is not None
+        tx = db.TransactionCache.get(db.TransactionCache.hash == tx_hash).tx
         assert tx.is_valid()
         return tx
 
     def __setitem__(self, tx_hash, tx):
-        self._model[bc.encode_hash(tx_hash)] = tx.hex()
+        db.TransactionCache.create(
+            hash=tx_hash,
+            tx=tx
+        )
 
     def __contains__(self, tx_hash):
-        return bc.encode_hash(tx_hash) in self._model
+        try:
+            db.TransactionCache.get(db.TransactionCache.hash == tx_hash)
+        except db.DoesNotExist:
+            return False
+        return True
 
 class Account:
 
-    def __init__(self, name, filename, password, context, settings):
+    def __init__(self, name, filename, context, settings):
         self.name = name
         self._context = context
         self._settings = settings
-
-        self._password = bytes(password, "utf-8")
 
         self._model = AccountModel(filename)
         self.client = None
 
         self._stopped = False
 
+    def initialize_db(self, filename, password):
+        db.initialize(filename, password)
+
     def brainwallet_wordlist(self):
         return self._model.wordlist
 
-    def set_seed(self, seed, wordlist, testnet):
-        self._model.seed = seed
-        self._model.wordlist = wordlist
-        self._model.testnet = testnet
+    def create(self, wordlist, is_testnet):
+        ec = self._model.create(wordlist, is_testnet)
+        if ec:
+            return ec
+        return None
 
     def save(self):
-        self._model.save(self._password)
+        #self._model.save(self._password)
+        pass
 
     def load(self):
-        return self._model.load(self._password)
+        return self._model.load()
 
-    def start(self):
+    def stop(self):
+        self._stopped = True
+
+    def start_scanning(self):
+        self._connect()
+        loop = asyncio.get_event_loop()
+        loop.create_task(self._check_updates())
+
+    def _connect(self):
         client_settings = libbitcoin.server.ClientSettings()
         client_settings.query_expire_time = self._settings.query_expire_time
         client_settings.socks5 = self._settings.socks5
         url = self._settings.url
-        if self._model.testnet:
+        if self._model.is_testnet:
             url = self._settings.testnet_url
         self.client = Client(self._context, url, client_settings)
-
-    def stop(self):
-        self.save()
-        self._stopped = True
-
-    def spawn_scan(self):
-        loop = asyncio.get_event_loop()
-        loop.create_task(self._check_updates())
 
     async def _check_updates(self):
         self.current_height = None
@@ -580,29 +559,26 @@ class Account:
         #print("Cache filled.")
         #print(json.dumps(self._model._model, indent=2))
         await self._generate_keys()
-        print("Updated:", json.dumps(self._model._model, indent=2))
+        print("Updated.")
 
     def _finish_reorg(self, index):
         print("Updating current_index to:", index)
         self._model.current_index = index
 
     async def _sync_history(self, from_height):
-        addrs = []
-        for pocket_name in self._model.pocket_names:
-            pocket = self._model.pocket(pocket_name)
-            addrs.extend(pocket.addrs)
+        for pocket in self._model.pockets:
+            print(pocket.addrs)
+            for address in pocket.addrs:
+                await self._scan(address, from_height, pocket)
 
-        for addr in addrs:
-            await self._scan(addr, from_height)
-
-    async def _scan(self, addr, from_height):
-        #print("Scanning:", addr)
-        ec, history = await self.client.history(addr)
+    async def _scan(self, address, from_height, pocket):
+        ec, history = await self.client.history(address.encoded())
         if ec:
             print("Couldn't fetch history:", ec, file=sys.stderr)
             return
 
-        self._model.cache.history[addr] = history
+        print(json.dumps(history, indent=2))
+        self._model.cache.history.add(address, history, pocket)
 
     async def _fill_cache(self):
         for tx_hash in self._model.cache.history.transaction_hashes:
@@ -623,21 +599,21 @@ class Account:
 
     def _generate_pocket_keys(self, pocket):
         max_i = -1
-        for addr in pocket.addrs:
-            if addr not in self._model.cache.history:
+        for address in pocket.addrs:
+            if address not in self._model.cache.history:
                 continue
-            if self._model.cache.history[addr]:
-                i = pocket.addr_index(addr)
-                if i is None:
-                    continue
-                max_i = max(i, max_i)
+            i = pocket.address_index(address)
+            if i is None:
+                continue
+            max_i = max(i, max_i)
         desired_len = max_i + 1 + self._settings.gap_limit
-        remaining = desired_len - len(pocket)
-        [pocket.add_key() for i in range(remaining)]
+        remaining = desired_len - pocket.number_normal_keys()
+        for i in range(remaining):
+            pocket.add_key()
 
     async def _query_stealth(self, from_height):
         genesis_height = 0
-        if self._model.testnet:
+        if self._model.is_testnet:
             genesis_height = 1063370
         from_height = max(genesis_height, from_height)
         # We haven't implemented prefixes yet.
@@ -652,9 +628,7 @@ class Account:
             ephemeral_public = bytes([2]) + ephemkey[::-1]
             ephemeral_public = bc.EcCompressed.from_bytes(ephemeral_public)
 
-            version = bc.PaymentAddress.mainnet_p2kh
-            if self._model.testnet:
-                version = bc.PaymentAddress.testnet_p2kh
+            version = self._model.payment_address_version()
 
             address = bc.PaymentAddress.from_hash(address_hash[::-1],
                                                   version)
@@ -686,9 +660,9 @@ class Account:
         return self._model.pocket_names
 
     def create_pocket(self, pocket_name):
-        pocket_model = self._model.add_pocket(pocket_name)
+        pocket = self._model.add_pocket(pocket_name)
 
-        if pocket_model is None:
+        if pocket is None:
             return ErrorCode.duplicate
 
         return None
@@ -710,12 +684,13 @@ class Account:
         return [address for address in addrs if not self.is_used(address)]
 
     def unused_addrs(self, pocket):
-        return self._filter_unused(pocket.addrs_nonstealth)
+        return [str(address) for address in
+                self._filter_unused(pocket.addrs_normal)]
 
     def is_used(self, addr):
-        if addr not in self._model.cache.history.addrs:
-            return False
-        return True if self._model.cache.history[addr] else False
+        if addr in self._model.cache.history:
+            return True
+        return False
 
     def receive(self, pocket_name=None):
         if pocket_name is None:
@@ -772,11 +747,44 @@ class Account:
         if pocket is None:
             return None
 
-        history = flatten(
-            [
-                row.model for row in history
-            ] for addr, history in pocket.history.items() if history
-        )
+        history = []
+        for row in pocket.history:
+            if row.is_output:
+                row_type = "output"
+            elif row.is_spend:
+                row_type = "spend"
+
+            obj = {
+                "hash": str(row.hash),
+                "index": row.index,
+                "height": row.height
+            }
+
+            row_json = {
+                "addr": str(row.address),
+                "type": row_type,
+
+                "spend": None,
+
+                "value": str(row.value)
+            }
+
+            if row.is_output:
+                row_json["output"] = obj
+
+                if row.spend is None:
+                    row_json["spend"] = None
+                else:
+                    row_json["spend"] = {
+                        "hash": str(row.spend.hash),
+                        "index": row.spend.index,
+                        "height": row.spend.height
+                    }
+            else:
+                row_json["spend"] = obj
+
+            history.append(row_json)
+
         return history
 
     async def get_height(self):
@@ -790,7 +798,7 @@ class Account:
         if validator.is_stealth():
             return True
 
-        if self._model.testnet:
+        if self._model.is_testnet:
             if not validator.is_testnet():
                 return False
         else:
@@ -885,7 +893,7 @@ class Account:
         return output
 
     def _create_stealth_outputs(self, stealth_addr, value):
-        if self._model.testnet:
+        if self._model.is_testnet:
             sender = StealthSender(bc.PaymentAddress.testnet_p2kh)
         else:
             sender = StealthSender(bc.PaymentAddress.mainnet_p2kh)
@@ -972,7 +980,7 @@ class Account:
     def _extract(self, prevout_script):
         p2kh = bc.PaymentAddress.mainnet_p2kh
         p2sh = bc.PaymentAddress.mainnet_p2sh
-        if self._model.testnet:
+        if self._model.is_testnet:
             p2kh = bc.PaymentAddress.testnet_p2kh
             p2sh = bc.PaymentAddress.testnet_p2sh
         return bc.PaymentAddress.extract(prevout_script, p2kh, p2sh)
@@ -1015,7 +1023,7 @@ class Wallet:
     def account_filename(self, account_name):
         return os.path.join(self.accounts_path, account_name)
 
-    async def create_account(self, account_name, password, use_testnet):
+    async def create_account(self, account_name, password, is_testnet):
         print("create_account", account_name, password)
         if account_name in self._account_names:
             return ErrorCode.duplicate, []
@@ -1023,21 +1031,23 @@ class Wallet:
         # Create new seed
         wordlist = create_brainwallet_seed()
         print("Wordlist:", wordlist)
-        seed = bc.decode_mnemonic(wordlist).data
 
         account_filename = self.account_filename(account_name)
         # Init current account object
-        self._account = Account(account_name, account_filename, password,
+        self._account = Account(account_name, account_filename,
                                 self._context, self._settings)
-        self._account.set_seed(seed, wordlist, use_testnet)
-        self._account.start()
-        self._account.spawn_scan()
-        self._account_names.append(account_name)
+
+        self._account.initialize_db(account_filename, password)
+        ec = self._account.create(wordlist, is_testnet)
+        if ec:
+            return ec, []
 
         # Create master pocket
-        self._account.create_pocket(self._settings.master_pocket_name)
+        ec = self._account.create_pocket(self._settings.master_pocket_name)
+        assert ec is None
 
-        self._account.save()
+        self._account_names.append(account_name)
+        self._account.start_scanning()
 
         return None, []
 
@@ -1052,20 +1062,23 @@ class Wallet:
         # Create new seed
         if not bc.validate_mnemonic(wordlist):
             return ErrorCode.invalid_brainwallet, []
-        seed = bc.decode_mnemonic(wordlist).data
 
         account_filename = self.account_filename(account_name)
         # Init current account object
-        self._account = Account(account_name, account_filename, password,
+        self._account = Account(account_name, account_filename,
                                 self._context, self._settings)
-        self._account.set_seed(seed, wordlist, use_testnet)
-        self._account.save()
-        self._account.start()
-        self._account.spawn_scan()
-        self._account_names.append(account_name)
+
+        self._account.initialize_db(account_filename, password)
+        ec = self._account.create(wordlist, is_testnet)
+        if ec:
+            return ec, []
 
         # Create master pocket
-        self._account.create_pocket(self._settings.master_pocket_name)
+        ec = self._account.create_pocket(self._settings.master_pocket_name)
+        assert ec is None
+
+        self._account_names.append(account_name)
+        self._account.start_scanning()
 
         return None, []
 
@@ -1088,13 +1101,14 @@ class Wallet:
             return ErrorCode.not_found, []
         account_filename = self.account_filename(account_name)
         # Init current account object
-        self._account = Account(account_name, account_filename, password,
+        self._account = Account(account_name, account_filename,
                                 self._context, self._settings)
+
+        self._account.initialize_db(account_filename, password)
         if not self._account.load():
-            self._account = None
             return ErrorCode.wrong_password, []
-        self._account.start()
-        self._account.spawn_scan()
+
+        self._account.start_scanning()
         return None, []
 
     async def delete_account(self, account_name):
