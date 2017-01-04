@@ -4,6 +4,7 @@ import json
 import os
 import random
 import sys
+from decimal import Decimal
 
 import libbitcoin.server
 from libbitcoin.server_fake_async import Client
@@ -273,7 +274,7 @@ class PocketModel:
         except db.DoesNotExist:
             return None
 
-        return key_model.index
+        return key_model.index_
 
     @property
     def stealth_scan_private(self):
@@ -363,13 +364,14 @@ class HistoryModel:
             output_hash = bc.HashDigest.from_bytes(output[0].hash[::-1])
 
             value = output[2]
-            output_value = bc.encode_base10(value, bc.btc_decimal_places)
+            output_value = Decimal(
+                bc.encode_base10(value, bc.btc_decimal_places))
 
             if spend is None:
                 spend = None
             else:
                 spend_hash = bc.HashDigest.from_bytes(spend[0].hash[::-1])
-                spend_value = bc.encode_base10(-value, bc.btc_decimal_places)
+                spend_value = -output_value
 
                 spend = db.History.create(
                     account=self._account_model,
@@ -432,11 +434,13 @@ class HistoryRowModel:
     def model(self):
         return self._model
 
+    @property
     def is_output(self):
         return self._model.is_output
 
+    @property
     def is_spend(self):
-        return not self.is_output()
+        return not self.is_output
 
     def is_spent_output(self):
         return self.is_output() and self.spend is not None
@@ -469,8 +473,8 @@ class HistoryRowModel:
 
     @property
     def value(self):
-        value = str(self._model.value)
-        return bc.decode_base10(value, bc.btc_decimal_places)
+        value = self._model.value
+        return int(value * (10**bc.btc_decimal_places))
 
     @property
     def spend(self):
@@ -480,7 +484,7 @@ class HistoryRowModel:
         return HistoryRowModel(spend)
 
     def to_input(self):
-        assert self.is_output()
+        assert self.is_output
         return (self.hash, self.index), self.value
 
 class TransactionCacheModel:
@@ -807,7 +811,7 @@ class Account:
 
                 "spend": None,
 
-                "value": str(row.value)
+                "value": row.value
             }
 
             if row.is_output:
