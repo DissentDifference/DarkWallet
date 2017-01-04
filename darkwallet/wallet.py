@@ -360,7 +360,7 @@ class HistoryModel:
         self._delete_entries(address, pocket)
 
         for output, spend in history:
-            output_hash = bc.HashDigest.from_bytes(output[0].hash)
+            output_hash = bc.HashDigest.from_bytes(output[0].hash[::-1])
 
             value = output[2]
             output_value = bc.encode_base10(value, bc.btc_decimal_places)
@@ -368,7 +368,7 @@ class HistoryModel:
             if spend is None:
                 spend = None
             else:
-                spend_hash = bc.HashDigest.from_bytes(spend[0].hash)
+                spend_hash = bc.HashDigest.from_bytes(spend[0].hash[::-1])
                 spend_value = bc.encode_base10(-value, bc.btc_decimal_places)
 
                 spend = db.History.create(
@@ -629,7 +629,7 @@ class Account:
                 await self._grab_tx(tx_hash)
 
     async def _grab_tx(self, tx_hash):
-        ec, tx_data = await self.client.transaction(tx_hash.data[::-1])
+        ec, tx_data = await self.client.transaction(tx_hash.data)
         if ec:
             print("Couldn't fetch transaction:", ec, file=sys.stderr)
             return
