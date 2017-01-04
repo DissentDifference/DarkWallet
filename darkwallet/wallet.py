@@ -216,24 +216,13 @@ class PocketModel:
             key=key
         )
 
-    def create_stealth(self):
-        model = self._model["stealth"]
-
-        first_key = self.main_key.derive_private(0 + bc.hd_first_hardened_key)
-        scan_private = first_key.derive_private(0 + bc.hd_first_hardened_key)
-        spend_private = first_key.derive_private(1 + bc.hd_first_hardened_key)
-        model["scan_private"] = scan_private.secret().data.hex()
-        model["spend_private"] = [
-            spend_private.secret().data.hex()
-        ]
-
     def _get_secret(self, address):
         try:
             key_model = db.PocketKeys.get(db.PocketKeys.address == address,
                                           db.PocketKeys.pocket == self._model)
         except db.DoesNotExist:
             return None
-        return key_model.secret()
+        return key_model.secret
 
     def _get_stealth_secret(self, address):
         try:
