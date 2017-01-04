@@ -296,17 +296,18 @@ class PocketModel:
     def stealth_address(self):
         return self.stealth_receiver.generate_stealth_address()
 
+    def _stealth_key_entry_exists(self, address):
+        try:
+            db.PocketStealthKeys.get(db.PocketStealthKeys.address == address)
+        except db.DoesNotExist:
+            return False
+        return True
+
     def add_stealth_key(self, address, key):
+        if self._stealth_key_entry_exists(address):
+            return
         db.PocketStealthKeys.create(pocket=self._model, address=address,
                                     secret=key)
-
-    def get_stealth_key(self, address):
-        if isinstance(address, bc.PaymentAddress):
-            address = address.encoded()
-        key_data = bytes.fromhex(self._model["stealth"]["keys"][address])
-        key = bc.EcSecret.from_bytes(key_data)
-        assert key.data.hex() == self._model["stealth"]["keys"][address]
-        return key
 
     def number_normal_keys(self):
         return len(db.PocketKeys.select())
