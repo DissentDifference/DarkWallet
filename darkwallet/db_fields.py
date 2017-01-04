@@ -34,7 +34,7 @@ class TransactionField(Field):
 
     def python_value(self, tx_data):
         tx_data = bytes.fromhex(tx_data)
-        tx = bc.Transaction.from_bytes(tx_data)
+        tx = bc.Transaction.from_data(tx_data)
         assert tx is not None
         return tx
 

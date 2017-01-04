@@ -142,7 +142,7 @@ class AccountModel:
         return CacheModel(self._model)
 
     def all_unspent_inputs(self):
-        rows = db.History.select().where(db.History.spend == None &
+        rows = db.History.select().where(db.History.spend == None,
                                          db.History.account == self._model)
         return [HistoryRowModel(row).to_input() for row in rows]
 
@@ -227,14 +227,17 @@ class PocketModel:
         ]
 
     def _get_secret(self, i):
-        return bc.HdPrivate.from_string(self._model["keys"][i]).secret()
+        key_model = db.PocketKeys.get(db.PocketKeys.index_ == i,
+                                      db.PocketKeys.pocket == self._model)
+        return key_model.key.secret()
 
     def _get_stealth_secret(self, address):
-        address = address.encoded()
-        if address not in self.addrs_from_stealth:
+        try:
+            key_model = db.PocketStealthKeys.get(
+                db.PocketStealthKeys.address == address)
+        except db.DoesNotExist:
             return None
-        key_data = self._model["stealth"]["keys"][address]
-        return bc.EcSecret.from_string(key_data)
+        return key_model.secret
 
     def key_from_address(self, address):
         i = self.address_index(address)
@@ -310,12 +313,11 @@ class PocketModel:
         return self._model.history
 
     def balance(self):
-        balance = str(sum(row.value for row in self.history))
-        return bc.decode_base10(balance, bc.btc_decimal_places)
+        return sum(row.value for row in self.history)
 
     @property
     def unspent_inputs(self):
-        rows = db.History.select().where(db.History.spend == None &
+        rows = db.History.select().where(db.History.spend == None,
                                          db.History.pocket == self._model)
         return [HistoryRowModel(row).to_input() for row in rows]
 
@@ -445,7 +447,8 @@ class HistoryRowModel:
 
     @property
     def value(self):
-        return self._model.value
+        value = str(self._model.value)
+        return bc.decode_base10(value, bc.btc_decimal_places)
 
     @property
     def spend(self):
@@ -853,7 +856,7 @@ class Account:
         await self._sign(tx)
 
         print("Broadcasting:", tx.to_data().hex())
-        #ec = await self.client.broadcast(tx.to_data())
+        ec = await self.client.broadcast(tx.to_data())
         return ec, bc.encode_hash(tx.hash())
 
     def _unspent_inputs(self, from_pocket):
