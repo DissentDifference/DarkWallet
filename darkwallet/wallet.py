@@ -316,8 +316,7 @@ class PocketModel:
         return [HistoryRowModel(row) for row in self._model.history]
 
     def balance(self):
-        balance = str(sum(row.value for row in self.history))
-        return bc.decode_base10(balance, bc.btc_decimal_places)
+        return sum(row.value for row in self.history)
 
     @property
     def unspent_inputs(self):
@@ -555,6 +554,7 @@ class Account:
         if self._model.is_testnet:
             url = self._settings.testnet_url
         self.client = Client(self._context, url, client_settings)
+        print("Connected to %s" % url)
 
     async def _check_updates(self):
         self.current_height = None
