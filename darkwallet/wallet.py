@@ -151,6 +151,9 @@ class AccountModel:
                 return key
         return None
 
+    def payment_address_version(self):
+        return self._model.payment_address_version()
+
 class PocketModel:
 
     def __init__(self, model):
@@ -567,7 +570,6 @@ class Account:
 
     async def _sync_history(self, from_height):
         for pocket in self._model.pockets:
-            print(pocket.addrs)
             for address in pocket.addrs:
                 await self._scan(address, from_height, pocket)
 
