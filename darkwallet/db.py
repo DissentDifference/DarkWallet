@@ -45,7 +45,7 @@ class PocketKeys(BaseModel):
 
     @property
     def secret(self):
-        return key.secret()
+        return self.key.secret()
 
 class PocketStealthKeys(BaseModel):
     pocket = ForeignKeyField(Pocket, related_name="stealth_keys")
