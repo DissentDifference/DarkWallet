@@ -437,6 +437,17 @@ class HistoryRowModel:
     def is_unspent_output(self):
         return self.is_output() and not self.is_spent_output()
 
+    def is_change_output(self):
+        if not self.is_output:
+            return False
+        try:
+            db.History.get(db.History.hash == self.hash,
+                           db.History.is_output == False,
+                           db.History.pocket == self._model.pocket)
+        except db.DoesNotExist:
+            return False
+        return True
+
     @property
     def hash(self):
         return self._model.hash
@@ -464,6 +475,23 @@ class HistoryRowModel:
     def value(self):
         value = self._model.value
         return int(value * (10**bc.btc_decimal_places))
+
+    def value_minus_change(self):
+        if self.is_output:
+            return self.value
+        return self.value + self._change_value()
+
+    def _change_value(self):
+        assert self.is_spend
+        try:
+            change_rows = db.History.select().where(
+                db.History.hash == self.hash,
+                db.History.is_output == True,
+                db.History.pocket == self._model.pocket)
+        except db.DoesNotExist:
+            # No change output
+            return 0
+        return sum(HistoryRowModel(row).value for row in change_rows)
 
     @property
     def spend(self):
@@ -788,6 +816,9 @@ class Account:
 
         history = []
         for row in pocket.history:
+            if row.is_change_output():
+                continue
+
             obj = {
                 "hash": str(row.hash),
                 "index": row.index,
@@ -800,7 +831,7 @@ class Account:
 
                 "spend": None,
 
-                "value": row.value
+                "value": row.value_minus_change()
             }
 
             if row.is_output:
