@@ -1039,7 +1039,7 @@ class Wallet:
         return os.path.join(self.accounts_path, account_name)
 
     async def create_account(self, account_name, password, is_testnet):
-        print("create_account", account_name, password)
+        print("Create_account:", account_name, password)
         if account_name in self._account_names:
             return ErrorCode.duplicate, []
 
@@ -1074,7 +1074,9 @@ class Wallet:
     async def restore_account(self, account_name, wordlist,
                               password, is_testnet):
         print("Restore_account:", account_name, wordlist, password)
-        # Create new seed
+        if account_name in self._account_names:
+            return ErrorCode.duplicate, []
+
         if not bc.validate_mnemonic(wordlist):
             return ErrorCode.invalid_brainwallet, []
 
