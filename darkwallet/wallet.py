@@ -173,7 +173,7 @@ class PocketModel:
         pocket_model = db.Pocket.create(
             account=account_model,
             name=name,
-            index=index,
+            index_=index,
             main_key=key,
             stealth_address=stealth_addr,
             stealth_scan_key=scan_key,
@@ -199,7 +199,7 @@ class PocketModel:
 
     @property
     def index(self):
-        return self._model.index
+        return self._model.index_
 
     def add_key(self):
         index = self.number_normal_keys()
@@ -208,7 +208,7 @@ class PocketModel:
 
         db.PocketKeys.create(
             pocket=self._model,
-            index=index,
+            index_=index,
             address=address,
             key=key
         )
@@ -289,7 +289,8 @@ class PocketModel:
         return self.stealth_receiver.generate_stealth_address()
 
     def add_stealth_key(self, address, key):
-        self._model["stealth"]["keys"][address.encoded()] = key.data.hex()
+        db.PocketStealthKeys.create(pocket=self._model, address=address,
+                                    secret=key)
 
     def get_stealth_key(self, address):
         if isinstance(address, bc.PaymentAddress):
@@ -316,6 +317,10 @@ class PocketModel:
                    if row.is_unspent_output()]
         unspent = [((row.hash, row.index), row.value) for row in unspent]
         return unspent
+
+    @property
+    def model(self):
+        return self._model
 
 class CacheModel:
 
@@ -348,34 +353,42 @@ class HistoryModel:
         for output, spend in history:
             output_hash = bc.HashDigest.from_bytes(output[0].hash)
 
+            value = output[2]
+            output_value = bc.encode_base10(value, bc.btc_decimal_places)
+
             if spend is None:
                 spend = None
             else:
                 spend_hash = bc.HashDigest.from_bytes(spend[0].hash)
+                spend_value = bc.encode_base10(-value, bc.btc_decimal_places)
 
                 spend = db.History.create(
                     account=self._account_model,
-                    pocket=pocket,
+                    pocket=pocket.model,
                     address=address,
 
                     is_output=False,
 
                     hash=spend_hash,
-                    index=spend[0].index,
-                    height=spend[1]
+                    index_=spend[0].index,
+                    height=spend[1],
+
+                    value=spend_value
                 )
 
             db.History.create(
                 account=self._account_model,
-                pocket=pocket,
+                pocket=pocket.model,
                 address=address,
 
                 is_output=True,
                 spend=spend,
 
                 hash=output_hash,
-                index=output[0].index,
-                height=output[1]
+                index_=output[0].index,
+                height=output[1],
+
+                value=output_value
             )
 
     def __contains__(self, address):
@@ -423,7 +436,7 @@ class HistoryRowModel:
 
     @property
     def index(self):
-        return self._model.index
+        return self._model.index_
 
     @property
     def height(self):
@@ -579,7 +592,6 @@ class Account:
             print("Couldn't fetch history:", ec, file=sys.stderr)
             return
 
-        print(json.dumps(history, indent=2))
         self._model.cache.history.add(address, history, pocket)
 
     async def _fill_cache(self):
@@ -588,11 +600,12 @@ class Account:
                 await self._grab_tx(tx_hash)
 
     async def _grab_tx(self, tx_hash):
-        ec, tx = await self.client.transaction(tx_hash.data)
+        ec, tx_data = await self.client.transaction(tx_hash.data[::-1])
         if ec:
             print("Couldn't fetch transaction:", ec, file=sys.stderr)
             return
         print("Got tx:", tx_hash)
+        tx = bc.Transaction.from_data(tx_data)
         self._model.cache.transactions[tx_hash] = tx
 
     async def _generate_keys(self):
@@ -1059,8 +1072,8 @@ class Wallet:
         return None, self._account.brainwallet_wordlist()
 
     async def restore_account(self, account_name, wordlist,
-                              password, use_testnet):
-        print("restore_account", account_name, wordlist, password)
+                              password, is_testnet):
+        print("Restore_account:", account_name, wordlist, password)
         # Create new seed
         if not bc.validate_mnemonic(wordlist):
             return ErrorCode.invalid_brainwallet, []

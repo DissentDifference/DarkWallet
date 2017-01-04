@@ -26,7 +26,7 @@ class Pocket(BaseModel):
     account = ForeignKeyField(Account, related_name="pockets")
     name = CharField(unique=True)
 
-    index = IntegerField()
+    index_ = IntegerField()
     main_key = HdPrivateField()
 
     stealth_address = StealthAddressField()
@@ -39,7 +39,7 @@ class Pocket(BaseModel):
 
 class PocketKeys(BaseModel):
     pocket = ForeignKeyField(Pocket, related_name="keys")
-    index = IntegerField()
+    index_ = IntegerField()
     address = PaymentAddressField(index=True)
     key = HdPrivateField()
 
@@ -66,7 +66,7 @@ class History(BaseModel):
     spend = ForeignKeyField("self", null=True)
 
     hash = HashDigestField()
-    index = IntegerField()
+    index_ = IntegerField()
     height = IntegerField()
 
     value = BitcoinValueField()

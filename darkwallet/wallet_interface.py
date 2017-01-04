@@ -66,12 +66,12 @@ class DwRestoreAccount(WalletInterfaceCallback):
         if len(params) != 4:
             return False
         self._account, self._brainwallet, \
-            self._password, self._use_testnet = params
+            self._password, self._is_testnet = params
         return True
 
     async def make_query(self):
         return await self._wallet.restore_account(self._account,
-            self._brainwallet, self._password, self._use_testnet)
+            self._brainwallet, self._password, self._is_testnet)
 
 class DwBalance(WalletInterfaceCallback):
 

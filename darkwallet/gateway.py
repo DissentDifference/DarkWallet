@@ -9,8 +9,8 @@ from libbitcoin.server_fake_async import TornadoContext
 from darkwallet.wallet_interface import WalletInterface
 
 # Debug stuff
-import logging
-logging.basicConfig(level=logging.DEBUG)
+#import logging
+#logging.basicConfig(level=logging.DEBUG)
 
 class QuerySocketHandler(tornado.websocket.WebSocketHandler):
 

@@ -59,8 +59,11 @@ async def seed(args, websockets_path):
 async def restore(args, websockets_path):
     assert args.account
     account = args.account[0]
-    brainwallet = input("Brainwallet: ").split(" ")
-    password = enter_confirmed_password()
+    #brainwallet = input("Brainwallet: ").split(" ")
+    brainwallet = ['install', 'oppose', 'unique', 'steel', 'opera', 'next',
+                   'add', 'town', 'warfare', 'leave', 'salt', 'chimney']
+    #password = enter_confirmed_password()
+    password = "surfing2"
     if password is None:
         print("Passwords don't match.")
         return -1
