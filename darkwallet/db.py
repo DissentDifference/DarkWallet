@@ -43,6 +43,10 @@ class PocketKeys(BaseModel):
     address = PaymentAddressField(index=True)
     key = HdPrivateField()
 
+    @property
+    def secret(self):
+        return key.secret()
+
 class PocketStealthKeys(BaseModel):
     pocket = ForeignKeyField(Pocket, related_name="stealth_keys")
     address = PaymentAddressField(index=True)

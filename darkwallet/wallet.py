@@ -226,10 +226,13 @@ class PocketModel:
             spend_private.secret().data.hex()
         ]
 
-    def _get_secret(self, i):
-        key_model = db.PocketKeys.get(db.PocketKeys.index_ == i,
-                                      db.PocketKeys.pocket == self._model)
-        return key_model.key.secret()
+    def _get_secret(self, address):
+        try:
+            key_model = db.PocketKeys.get(db.PocketKeys.address == address,
+                                          db.PocketKeys.pocket == self._model)
+        except db.DoesNotExist:
+            return None
+        return key_model.secret()
 
     def _get_stealth_secret(self, address):
         try:
@@ -240,12 +243,12 @@ class PocketModel:
         return key_model.secret
 
     def key_from_address(self, address):
-        i = self.address_index(address)
-        if i is not None:
-            return self._get_secret(i)
-        stealth_key = self._get_stealth_secret(address)
-        if stealth_key is not None:
-            return stealth_key
+        secret = self._get_secret(address)
+        if secret is not None:
+            return secret
+        stealth_secret = self._get_stealth_secret(address)
+        if stealth_secret is not None:
+            return stealth_secret
         return None
 
     @property
