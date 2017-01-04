@@ -142,7 +142,9 @@ class AccountModel:
         return CacheModel(self._model)
 
     def all_unspent_inputs(self):
-        return flatten(pocket.unspent_inputs for pocket in self.pockets)
+        rows = db.History.select().where(db.History.spend == None &
+                                         db.History.account == self._model)
+        return [HistoryRowModel(row).to_input() for row in rows]
 
     def find_key(self, address):
         for pocket in self.pockets:
@@ -308,15 +310,14 @@ class PocketModel:
         return self._model.history
 
     def balance(self):
-        return sum(row.value for row in self.history)
+        balance = str(sum(row.value for row in self.history))
+        return bc.decode_base10(balance, bc.btc_decimal_places)
 
     @property
     def unspent_inputs(self):
-        # [(point, value), ...]
-        unspent = [row for row in self.flat_history
-                   if row.is_unspent_output()]
-        unspent = [((row.hash, row.index), row.value) for row in unspent]
-        return unspent
+        rows = db.History.select().where(db.History.spend == None &
+                                         db.History.pocket == self._model)
+        return [HistoryRowModel(row).to_input() for row in rows]
 
     @property
     def model(self):
@@ -452,6 +453,10 @@ class HistoryRowModel:
         if spend is None:
             return spend
         return HistoryRowModel(spend)
+
+    def to_input(self):
+        assert self.is_output()
+        return (self.hash, self.index), self.value
 
 class TransactionCacheModel:
 
@@ -848,7 +853,7 @@ class Account:
         await self._sign(tx)
 
         print("Broadcasting:", tx.to_data().hex())
-        ec = await self.client.broadcast(tx.to_data())
+        #ec = await self.client.broadcast(tx.to_data())
         return ec, bc.encode_hash(tx.hash())
 
     def _unspent_inputs(self, from_pocket):
