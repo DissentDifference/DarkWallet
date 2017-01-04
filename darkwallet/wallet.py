@@ -144,6 +144,7 @@ class AccountModel:
 
     def all_unspent_inputs(self):
         rows = db.History.select().where(db.History.spend == None,
+                                         db.History.is_output == True,
                                          db.History.account == self._model)
         return [HistoryRowModel(row).to_input() for row in rows]
 
