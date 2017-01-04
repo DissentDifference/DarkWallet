@@ -313,10 +313,11 @@ class PocketModel:
 
     @property
     def history(self):
-        return self._model.history
+        return [HistoryRowModel(row) for row in self._model.history]
 
     def balance(self):
-        return sum(row.value for row in self.history)
+        balance = str(sum(row.value for row in self.history))
+        return bc.decode_base10(balance, bc.btc_decimal_places)
 
     @property
     def unspent_inputs(self):
@@ -355,7 +356,9 @@ class HistoryModel:
         rows = db.History.select().where(db.History.address == address)
         return [HistoryRowModel(row) for row in rows]
 
-    def add(self, address, history, pocket):
+    def set(self, address, history, pocket):
+        self._delete_entries(address, pocket)
+
         for output, spend in history:
             output_hash = bc.HashDigest.from_bytes(output[0].hash)
 
@@ -396,6 +399,11 @@ class HistoryModel:
 
                 value=output_value
             )
+
+    def _delete_entries(self, address, pocket):
+        query = db.History.delete().where(db.History.address == address,
+                                          db.History.pocket == pocket.model)
+        query.execute()
 
     def __contains__(self, address):
         rows = db.History.select().where(db.History.address == address)
@@ -447,6 +455,17 @@ class HistoryRowModel:
     @property
     def height(self):
         return self._model.height
+
+    @property
+    def address(self):
+        return self._model.address
+
+    def type_string(self):
+        if self.is_output:
+            return "output"
+        elif self.is_spend:
+            return "spend"
+        assert False
 
     @property
     def value(self):
@@ -581,10 +600,9 @@ class Account:
     async def _update(self, index, from_height):
         await self._query_stealth(from_height)
         await self._sync_history(from_height)
-        #print("Scanned.")
+        print("Scanned.")
         await self._fill_cache()
-        #print("Cache filled.")
-        #print(json.dumps(self._model._model, indent=2))
+        print("Cache filled.")
         await self._generate_keys()
         print("Updated.")
 
@@ -603,7 +621,7 @@ class Account:
             print("Couldn't fetch history:", ec, file=sys.stderr)
             return
 
-        self._model.cache.history.add(address, history, pocket)
+        self._model.cache.history.set(address, history, pocket)
 
     async def _fill_cache(self):
         for tx_hash in self._model.cache.history.transaction_hashes:
@@ -636,6 +654,7 @@ class Account:
         remaining = desired_len - pocket.number_normal_keys()
         for i in range(remaining):
             pocket.add_key()
+        print("Generated %s keys" % remaining)
 
     async def _query_stealth(self, from_height):
         genesis_height = 0
@@ -775,11 +794,6 @@ class Account:
 
         history = []
         for row in pocket.history:
-            if row.is_output:
-                row_type = "output"
-            elif row.is_spend:
-                row_type = "spend"
-
             obj = {
                 "hash": str(row.hash),
                 "index": row.index,
@@ -788,7 +802,7 @@ class Account:
 
             row_json = {
                 "addr": str(row.address),
-                "type": row_type,
+                "type": row.type_string(),
 
                 "spend": None,
 

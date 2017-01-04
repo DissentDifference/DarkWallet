@@ -74,8 +74,8 @@ class QuerySocketHandler(tornado.websocket.WebSocketHandler):
                             message, exc_info=True)
         except Exception as e:
             print("Error sending:", str(e))
-            traceback.print_exc()
             print("Message:", message.keys())
+            raise
 
 class GatewayApplication(tornado.web.Application):
 
