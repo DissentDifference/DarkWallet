@@ -1092,10 +1092,6 @@ class Wallet:
     def account_filename(self, account_name):
         return os.path.join(self.accounts_path, account_name)
 
-    def _activate_account(self, account):
-        self._account = account
-        self._account_names.append(account.name)
-
     async def create_account(self, account_name, password, is_testnet):
         print("Create_account:", account_name, password)
         if account_name in self._account_names:
@@ -1107,20 +1103,20 @@ class Wallet:
 
         account_filename = self.account_filename(account_name)
         # Init current account object
-        account = Account(account_name, account_filename,
-                          self._context, self._settings)
+        self._account = Account(account_name, account_filename,
+                                self._context, self._settings)
 
-        account.initialize_db(account_filename, password)
-        ec = account.create(wordlist, is_testnet)
+        self._account.initialize_db(account_filename, password)
+        ec = self._account.create(wordlist, is_testnet)
         if ec:
             return ec, []
 
         # Create master pocket
-        ec = account.create_pocket(self._settings.master_pocket_name)
+        ec = self._account.create_pocket(self._settings.master_pocket_name)
         assert ec is None
 
-        self._activate_account(account)
-        account.start_scanning()
+        self._account_names.append(account_name)
+        self._account.start_scanning()
 
         return None, []
 
@@ -1140,20 +1136,20 @@ class Wallet:
 
         account_filename = self.account_filename(account_name)
         # Init current account object
-        account = Account(account_name, account_filename,
-                          self._context, self._settings)
+        self._account = Account(account_name, account_filename,
+                                self._context, self._settings)
 
-        account.initialize_db(account_filename, password)
-        ec = account.create(wordlist, is_testnet)
+        self._account.initialize_db(account_filename, password)
+        ec = self._account.create(wordlist, is_testnet)
         if ec:
             return ec, []
 
         # Create master pocket
-        ec = account.create_pocket(self._settings.master_pocket_name)
+        ec = self._account.create_pocket(self._settings.master_pocket_name)
         assert ec is None
 
-        self._activate_account(account)
-        account.start_scanning()
+        self._account_names.append(account_name)
+        self._account.start_scanning()
 
         return None, []
 
@@ -1176,15 +1172,14 @@ class Wallet:
             return ErrorCode.not_found, []
         account_filename = self.account_filename(account_name)
         # Init current account object
-        account = Account(account_name, account_filename,
-                          self._context, self._settings)
+        self._account = Account(account_name, account_filename,
+                                self._context, self._settings)
 
-        account.initialize_db(account_filename, password)
-        if not account.load():
+        self._account.initialize_db(account_filename, password)
+        if not self._account.load():
             return ErrorCode.wrong_password, []
 
-        self._account = account
-        account.start_scanning()
+        self._account.start_scanning()
         return None, []
 
     async def delete_account(self, account_name):
