@@ -301,7 +301,8 @@ class PocketModel:
                                     secret=key)
 
     def number_normal_keys(self):
-        return len(db.PocketKeys.select())
+        return len(db.PocketKeys.select().where(
+            db.PocketKeys.pocket == self._model))
 
     @property
     def history(self):
@@ -676,6 +677,7 @@ class Account:
             max_i = max(i, max_i)
         desired_len = max_i + 1 + self._settings.gap_limit
         remaining = desired_len - pocket.number_normal_keys()
+        assert remaining >= 0
         for i in range(remaining):
             pocket.add_key()
         print("Generated %s keys" % remaining)

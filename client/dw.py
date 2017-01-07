@@ -134,6 +134,7 @@ async def dw_set(args, websockets_path):
     account = args.account[0]
     #password = getpass.getpass()
     password = "surfing2"
+    password = "testtest"
     message = json.dumps({
         "command": "dw_set_account",
         "id": create_random_id(),
