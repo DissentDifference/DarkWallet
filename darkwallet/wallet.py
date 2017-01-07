@@ -1109,6 +1109,7 @@ class Wallet:
         self._account.initialize_db(account_filename, password)
         ec = self._account.create(wordlist, is_testnet)
         if ec:
+            self._account = None
             return ec, []
 
         # Create master pocket
@@ -1142,6 +1143,7 @@ class Wallet:
         self._account.initialize_db(account_filename, password)
         ec = self._account.create(wordlist, is_testnet)
         if ec:
+            self._account = None
             return ec, []
 
         # Create master pocket
@@ -1177,6 +1179,7 @@ class Wallet:
 
         self._account.initialize_db(account_filename, password)
         if not self._account.load():
+            self._account = None
             return ErrorCode.wrong_password, []
 
         self._account.start_scanning()
