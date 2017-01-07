@@ -1,3 +1,4 @@
+import asyncio
 import json
 import random
 import signal
@@ -101,10 +102,11 @@ class GatewayApplication(tornado.web.Application):
 def start(settings):
     context = TornadoContext()
     # Handle CTRL-C
-    def signal_handler(signum, frame):
+    def signal_handler():
         print("Stopping darkwallet-daemon...")
         context.stop()
-    signal.signal(signal.SIGINT, signal_handler)
+    loop = asyncio.get_event_loop()
+    loop.add_signal_handler(signal.SIGINT, signal_handler)
     # Create main application
     app = GatewayApplication(context, settings)
     app.start_listen()
