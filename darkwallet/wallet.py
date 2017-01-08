@@ -1068,19 +1068,8 @@ class Wallet:
         self._account_names = darkwallet.util.list_files(self.accounts_path)
         self._account = None
 
-        #self._context.spawn(self._poller)
-        self._stopped = False
-        #self._context.register(self)
-
-    async def _poller(self):
-        while self._stopped:
-            asyncio.sleep(20)
-            if self._account is None:
-                self._account.spawn_scan()
-
     async def stop(self):
         self._account.stop()
-        self._stopped = True
 
     @property
     def accounts_path(self):
