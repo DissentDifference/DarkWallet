@@ -20,6 +20,13 @@ class Gateway:
         self._wallet = WalletInterface(context, settings)
 
     async def _accept(self, websocket, path):
+        try:
+            while True:
+                await self._process(websocket, path)
+        except websockets.ConnectionClosed:
+            print("Closing connection.")
+
+    async def _process(self, websocket, path):
         message = await websocket.recv()
         try:
             request = json.loads(message)
