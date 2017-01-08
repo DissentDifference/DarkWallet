@@ -1104,6 +1104,9 @@ class Wallet:
         wordlist = create_brainwallet_seed()
         print("Wordlist:", wordlist)
 
+        if self._account is not None:
+            self._account.stop()
+
         account_filename = self.account_filename(account_name)
         # Init current account object
         self._account = Account(account_name, account_filename,
@@ -1137,6 +1140,9 @@ class Wallet:
 
         if not bc.validate_mnemonic(wordlist):
             return ErrorCode.invalid_brainwallet, []
+
+        if self._account is not None:
+            self._account.stop()
 
         account_filename = self.account_filename(account_name)
         # Init current account object
@@ -1175,6 +1181,10 @@ class Wallet:
     async def set_account(self, account_name, password):
         if not account_name in self._account_names:
             return ErrorCode.not_found, []
+
+        if self._account is not None:
+            self._account.stop()
+
         account_filename = self.account_filename(account_name)
         # Init current account object
         self._account = Account(account_name, account_filename,
