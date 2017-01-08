@@ -43,6 +43,7 @@ class ErrorCode(enum.Enum):
     not_enough_funds = 6
     invalid_address = 7
     short_password = 8
+    updating_history = 9
 
 class AccountModel:
 
@@ -543,6 +544,7 @@ class Account:
         self.client = None
 
         self._scan_task = None
+        self._updating_history = False
 
     def initialize_db(self, filename, password):
         db.initialize(filename, password)
@@ -603,6 +605,7 @@ class Account:
             from_height = height
         else:
             print("Blockchain reorganization event.")
+            self._updating_history = True
             from_height = 0
             self._clear_history()
         await self._update(index, from_height)
@@ -635,6 +638,7 @@ class Account:
     def _finish_reorg(self, index):
         print("Updating current_index to:", index)
         self._model.current_index = index
+        self._updating_history = False
 
     async def _sync_history(self, from_height):
         for pocket in self._model.pockets:
@@ -789,6 +793,9 @@ class Account:
         return sum(pocket.balance() for pocket in self._model.pockets)
 
     def balance(self, pocket_name=None):
+        if self._updating_history:
+            return ErrorCode.updating_history, []
+
         if pocket_name is None:
             return None, [self.total_balance]
 
@@ -804,6 +811,9 @@ class Account:
                        for pocket_name in self._model.pocket_names)
 
     def history(self, pocket_name=None):
+        if self._updating_history:
+            return ErrorCode.updating_history, []
+
         if pocket_name is None:
             # Most recent history from all pockets
             return None, self.combined_history
@@ -878,6 +888,9 @@ class Account:
         return validator.is_p2kh()
 
     async def send(self, dests, from_pocket, fee):
+        if self._updating_history:
+            return ErrorCode.updating_history, []
+
         for address, value in dests:
             if not self._is_correct_address(address):
                 return ErrorCode.invalid_address, None
