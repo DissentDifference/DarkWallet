@@ -542,7 +542,7 @@ class Account:
         self._model = AccountModel(filename)
         self.client = None
 
-        self._stopped = False
+        self._scan_task = None
 
     def initialize_db(self, filename, password):
         db.initialize(filename, password)
@@ -564,12 +564,13 @@ class Account:
         return self._model.load()
 
     def stop(self):
-        self._stopped = True
+        if self._scan_task is not None:
+            self._scan_task.cancel()
 
     def start_scanning(self):
         self._connect()
         loop = asyncio.get_event_loop()
-        loop.create_task(self._check_updates())
+        self._scan_task = loop.create_task(self._check_updates())
 
     def _connect(self):
         client_settings = libbitcoin.server.ClientSettings()
@@ -584,7 +585,7 @@ class Account:
     async def _check_updates(self):
         self.current_height = None
         self.current_hash = None
-        while not self._stopped:
+        while True:
             await self._query_blockchain_reorg()
             await asyncio.sleep(5)
 
