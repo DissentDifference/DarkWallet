@@ -7,7 +7,8 @@ import sys
 from decimal import Decimal
 
 import libbitcoin.server
-from libbitcoin.server_fake_async import Client
+from libbitcoin.server_fake_async import Client as FakeAsyncClient
+from libbitcoin.server import Client
 import darkwallet.util
 from libbitcoin import bc
 from darkwallet import sodium
@@ -581,7 +582,10 @@ class Account:
         url = self._settings.url
         if self._model.is_testnet:
             url = self._settings.testnet_url
-        self.client = Client(self._context, url, client_settings)
+        if self._settings.use_ws_impl:
+            self.client = Client(self._context, url, client_settings)
+        else:
+            self.client = FakeAsyncClient(self._context, url, client_settings)
         print("Connected to %s" % url)
 
     async def _check_updates(self):
