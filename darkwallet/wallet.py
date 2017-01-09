@@ -656,6 +656,7 @@ class Account:
             print("Couldn't fetch history:", ec, file=sys.stderr)
             return
 
+        print("Fetching history for", address)
         self._model.cache.history.set(address, history, pocket)
 
     async def _fill_cache(self):
