@@ -1275,4 +1275,6 @@ class Wallet:
         if self._account is not None:
             self._account.stop()
         self._context.stop()
+        loop = asyncio.get_event_loop()
+        loop.stop()
 

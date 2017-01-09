@@ -1,5 +1,6 @@
 import asyncio
 import json
+import signal
 import sys
 import websockets
 
@@ -8,7 +9,6 @@ loop = zmq.asyncio.ZMQEventLoop()
 asyncio.set_event_loop(loop)
 
 import libbitcoin.server
-context = libbitcoin.server.Context()
 
 from darkwallet.wallet_interface import WalletInterface
 
@@ -17,7 +17,11 @@ class Gateway:
     def __init__(self, settings):
         self.settings = settings
 
-        self._wallet = WalletInterface(context, settings)
+        self.context = libbitcoin.server.Context()
+        self._wallet = WalletInterface(self.context, settings)
+
+    def stop(self):
+        self.context.stop()
 
     async def _accept(self, websocket, path):
         try:
@@ -65,7 +69,15 @@ class Gateway:
 def start_ws(settings):
     gateway = Gateway(settings)
 
-    tasks = [gateway.serve()] + context.tasks()
+    tasks = [gateway.serve()]
 
-    asyncio.get_event_loop().run_until_complete(asyncio.wait(tasks))
+    # Handle CTRL-C
+    def signal_handler():
+        print("Stopping darkwallet-daemon...")
+        gateway.stop()
+        loop.stop()
+
+    loop.add_signal_handler(signal.SIGINT, signal_handler)
+    loop.run_until_complete(asyncio.wait(tasks))
+    loop.run_forever()
 
