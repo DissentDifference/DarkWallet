@@ -646,9 +646,12 @@ class Account:
         self._updating_history = False
 
     async def _sync_history(self, from_height):
+        tasks = []
         for pocket in self._model.pockets:
             for address in pocket.addrs:
-                await self._scan(address, from_height, pocket)
+                tasks.append(self._scan(address, from_height, pocket))
+
+        await asyncio.gather(*tasks)
 
     async def _scan(self, address, from_height, pocket):
         ec, history = await self.client.history(address.encoded())
