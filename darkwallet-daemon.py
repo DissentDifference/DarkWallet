@@ -9,10 +9,10 @@ def main():
     settings.load()
 
     # Start the darkwallet-daemon
-    if settings.use_ws_impl:
-        darkwallet.start_ws(settings)
-    else:
+    if settings.use_tornado_impl:
         darkwallet.start(settings)
+    else:
+        darkwallet.start_ws(settings)
     return 0
 
 if __name__ == "__main__":

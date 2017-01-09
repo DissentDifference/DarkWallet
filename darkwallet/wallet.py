@@ -582,10 +582,11 @@ class Account:
         url = self._settings.url
         if self._model.is_testnet:
             url = self._settings.testnet_url
-        if self._settings.use_ws_impl:
-            self.client = Client(self._context, url, client_settings)
-        else:
+        # Tornado implementation.
+        if self._settings.use_tornado_impl:
             self.client = FakeAsyncClient(self._context, url, client_settings)
+        else:
+            self.client = Client(self._context, url, client_settings)
         print("Connected to %s" % url)
 
     async def _check_updates(self):

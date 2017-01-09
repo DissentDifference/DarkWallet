@@ -24,13 +24,13 @@ class Settings:
         parser.add_argument("--port", "-p", dest="port",
                             help="Run on the given port.",
                             default=None)
-        parser.add_argument("--ws", "-w", dest="use_ws_impl",
+        parser.add_argument("--tornado", "-t", dest="use_tornado",
                             action="store_const", const=True, default=False,
-                            help="Use the websocket implementation instead.")
+                            help="Use the Tornado implementation instead.")
         return parser.parse_args()
 
     def _load(self, args):
-        self.use_ws_impl = args.use_ws_impl
+        self.use_tornado_impl = args.use_tornado
 
         self.config_path = args.config
         darkwallet.util.make_sure_dir_exists(self.config_path)
