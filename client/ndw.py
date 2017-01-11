@@ -40,24 +40,35 @@ class Application:
             self.screen.addstr(0, x, tab_string, color)
 
     async def _display_balance(self):
-        ec, balance = await api.Wallet.balance(self._ws)
+        ec, balance = await api.Wallet.balance(self._ws, self._active_pocket)
         self.screen.addstr(2, 2, "Balance: %s BTC" % balance)
 
     async def _display_pockets(self):
         ec, self._pockets = await api.Pocket.list(self._ws)
         self.screen.addstr(4, 2, "Pockets:")
+        if self._current_pocket == 0:
+            color = self._active_account_color()
+        else:
+            color = self._inactive_account_color()
+        self._active_pocket = None
+        self.screen.addstr(5, 4, "All", color)
         for i, pocket in enumerate(self._pockets):
-            self.screen.addstr(5 + i, 4, pocket)
+            if i + 1 == self._current_pocket:
+                color = self._active_account_color()
+                self._active_pocket = pocket
+            else:
+                color = self._inactive_account_color()
+            self.screen.addstr(6 + i, 4, pocket, color)
 
     async def _display_stealth_addr(self):
-        ec, stealth = await api.Wallet.stealth(self._ws)
-        off = 5 + len(self._pockets) + 1
+        ec, stealth = await api.Wallet.stealth(self._ws, self._active_pocket)
+        off = 5 + len(self._pockets) + 2
         self.screen.addstr(off, 2, "Stealth address:")
         self.screen.addstr(off + 1, 4, stealth)
 
     async def _display_receive_addrs(self):
-        ec, addrs = await api.Wallet.receive(self._ws)
-        off = 5 + len(self._pockets) + 4
+        ec, addrs = await api.Wallet.receive(self._ws, self._active_pocket)
+        off = 5 + len(self._pockets) + 5
         self.screen.addstr(off, 2, "Addresses:")
         for i, addr in enumerate(addrs):
             y = off + 1 + i
@@ -73,9 +84,9 @@ class Application:
 
         self._draw_tab_bar()
 
-        await self._display_balance()
-
         await self._display_pockets()
+
+        await self._display_balance()
 
         await self._display_stealth_addr()
 
@@ -85,6 +96,7 @@ class Application:
 
     async def start(self):
         self._active_account = None
+        self._active_pocket = None
 
         while True:
             self._active_account, self._account_names = \
@@ -96,6 +108,7 @@ class Application:
             await self._select_account()
 
         self._current_tab = self._account_names.index(self._active_account)
+        self._current_pocket = 0
         while True:
             await self.display_main_window()
             c = self.screen.getch()
@@ -109,8 +122,17 @@ class Application:
                 if self._current_tab < 0:
                     self._current_tab = len(self._account_names) - 1
                 await self._activate_account()
+            elif c == curses.KEY_DOWN:
+                self._current_pocket += 1
+                if self._current_pocket > len(self._pockets):
+                    self._current_pocket = 0
+            elif c == curses.KEY_UP:
+                self._current_pocket -= 1
+                if self._current_pocket < 0:
+                    self._current_pocket = len(self._pockets)
 
     async def _activate_account(self):
+        self._active_pocket = None
         password = await self._enter_password_tab2()
         if password is None:
             return
