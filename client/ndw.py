@@ -41,13 +41,26 @@ class Application:
 
     async def _display_balance(self):
         ec, balance = await api.Wallet.balance(self._ws)
-        self.screen.addstr(3, 2, "Balance: %s BTC" % balance)
+        self.screen.addstr(2, 2, "Balance: %s BTC" % balance)
 
     async def _display_pockets(self):
-        ec, pockets = await api.Pocket.list(self._ws)
-        self.screen.addstr(5, 2, "Pockets:")
-        for i, pocket in enumerate(pockets):
-            self.screen.addstr(6 + i, 4, pocket)
+        ec, self._pockets = await api.Pocket.list(self._ws)
+        self.screen.addstr(4, 2, "Pockets:")
+        for i, pocket in enumerate(self._pockets):
+            self.screen.addstr(5 + i, 4, pocket)
+
+    async def _display_stealth_addr(self):
+        ec, stealth = await api.Wallet.stealth(self._ws)
+        off = 5 + len(self._pockets) + 1
+        self.screen.addstr(off, 2, "Stealth address:")
+        self.screen.addstr(off + 1, 4, stealth)
+
+    async def _display_receive_addrs(self):
+        ec, addrs = await api.Wallet.receive(self._ws)
+        off = 5 + len(self._pockets) + 4
+        self.screen.addstr(off, 2, "Addresses:")
+        for i, addr in enumerate(addrs):
+            self.screen.addstr(off + 1 + i, 4, addr)
 
     async def display_main_window(self):
         self.screen.clear()
@@ -57,6 +70,10 @@ class Application:
         await self._display_balance()
 
         await self._display_pockets()
+
+        await self._display_stealth_addr()
+
+        await self._display_receive_addrs()
 
         self.screen.refresh()
 
