@@ -87,6 +87,15 @@ class WebSocket:
         message = json.dumps(message)
         await self._websocket.send(message)
 
+    # Used for stop
+    async def only_send(self, command):
+        request = {
+            "command": command,
+            "id": create_random_id(),
+            "params": []
+        }
+        await self._produce(request)
+
 class Account:
 
     @staticmethod
@@ -200,5 +209,5 @@ class Daemon:
 
     @staticmethod
     async def stop(ws):
-        await ws.query("dw_stop")
+        await ws.only_send("dw_stop")
 
