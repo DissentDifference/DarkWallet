@@ -60,7 +60,13 @@ class Application:
         off = 5 + len(self._pockets) + 4
         self.screen.addstr(off, 2, "Addresses:")
         for i, addr in enumerate(addrs):
-            self.screen.addstr(off + 1 + i, 4, addr)
+            y = off + 1 + i
+            maxy = self.screen.getmaxyx()[0] - 2
+            if y == maxy:
+                self.screen.addstr(y, 4, "...")
+                break
+            else:
+                self.screen.addstr(y, 4, addr)
 
     async def display_main_window(self):
         self.screen.clear()
