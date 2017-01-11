@@ -7,6 +7,9 @@ import random
 import sys
 import websockets
 
+# Our modules
+import api
+
 def enter_confirmed_password():
     password = getpass.getpass()
     confirm_password = getpass.getpass("Confirm password:")
@@ -14,32 +17,27 @@ def enter_confirmed_password():
         return None
     return password
 
-def create_random_id():
-    MAX_UINT32 = 4294967295
-    return random.randint(0, MAX_UINT32)
-
 async def init(args, websockets_path):
     assert args.account
-    account = args.account[0]
+    account_name = args.account[0]
+
     #password = enter_confirmed_password()
     password = "surfing2"
     if password is None:
-        print("Passwords don't match.")
+        print("Error: passwords don't match.", file=sys.stderr)
         return -1
-    message = json.dumps({
-        "command": "dw_create_account",
-        "id": create_random_id(),
-        "params": [
-            account,
-            password,
-            args.testnet
-        ]
-    })
-    print("Sending:", message)
-    async with websockets.connect(websockets_path) as websocket:
-        await websocket.send(message)
-        response = json.loads(await websocket.recv())
-    print(response)
+
+    is_testnet = args.testnet
+
+    async with api.WebSocket(websockets_path) as ws:
+        ec = await api.Account.create(ws, account_name,
+                                      password, is_testnet)
+
+    if ec:
+        print("Error: failed to create account.", ec, file=sys.stderr)
+        return -1
+
+    print("Account created.")
     return 0
 
 async def seed(args, websockets_path):
@@ -85,68 +83,44 @@ async def restore(args, websockets_path):
     return 0
 
 async def balance(args, websockets_path):
-    message = json.dumps({
-        "command": "dw_balance",
-        "id": create_random_id(),
-        "params": [
-            args.pocket
-        ]
-    })
-    print("Sending:", message)
-    async with websockets.connect(websockets_path) as websocket:
-        await websocket.send(message)
-        response = json.loads(await websocket.recv())
-    print(response)
+    async with api.WebSocket(websockets_path) as ws:
+        ec, balance = await api.Wallet.balance(ws, args.pocket)
+    if ec:
+        print("Error: fetching balance.", ec, file=sys.stderr)
+        return
+    print(balance)
     return 0
 
 async def history(args, websockets_path):
-    message = json.dumps({
-        "command": "dw_history",
-        "id": create_random_id(),
-        "params": [
-            args.pocket
-        ]
-    })
-    print("Sending:", message)
-    async with websockets.connect(websockets_path) as websocket:
-        await websocket.send(message)
-        response = json.loads(await websocket.recv())
-    #print(response)
-    print(json.dumps(response["result"], indent=2))
+    async with api.WebSocket(websockets_path) as ws:
+        ec, history = await api.Wallet.history(ws, args.pocket)
+    if ec:
+        print("Error: fetching history.", ec, file=sys.stderr)
+        return
+    print(json.dumps(history, indent=2))
     return 0
 
 async def account(args, websockets_path):
-    message = json.dumps({
-        "command": "dw_list_accounts",
-        "id": create_random_id(),
-        "params": [
-        ]
-    })
-    print("Sending:", message)
-    async with websockets.connect(websockets_path) as websocket:
-        await websocket.send(message)
-        response = json.loads(await websocket.recv())
-    print(response)
+    async with api.WebSocket(websockets_path) as ws:
+        active_account, account_names = await api.Account.list(ws)
+
+    for name in account_names:
+        if name == active_account:
+            print("*", name)
+        else:
+            print(" ", name)
     return 0
 
 async def dw_set(args, websockets_path):
     assert args.account
-    account = args.account[0]
+    account_name = args.account[0]
+
     #password = getpass.getpass()
     password = "surfing2"
-    message = json.dumps({
-        "command": "dw_set_account",
-        "id": create_random_id(),
-        "params": [
-            account,
-            password
-        ]
-    })
-    print("Sending:", message)
-    async with websockets.connect(websockets_path) as websocket:
-        await websocket.send(message)
-        response = json.loads(await websocket.recv())
-    print(response)
+
+    async with api.WebSocket(websockets_path) as ws:
+        ec = await api.Account.set(ws, account_name, password)
+
     return 0
 
 async def rm(args, websockets_path):
@@ -172,12 +146,13 @@ async def pocket(args, websockets_path):
               file=sys.stderr)
         return -1
     if args.pocket is None:
-        message = json.dumps({
-            "command": "dw_list_pockets",
-            "id": create_random_id(),
-            "params": [
-            ]
-        })
+        async with api.WebSocket(websockets_path) as ws:
+            ec, pockets = await api.Pocket.list(ws)
+        if ec:
+            print("Error: unable to fetch pockets.", ec, file=sys.stderr)
+            return
+        for pocket in pockets:
+            print(pocket)
     elif args.delete:
         message = json.dumps({
             "command": "dw_delete_pocket",
@@ -187,18 +162,12 @@ async def pocket(args, websockets_path):
             ]
         })
     else:
-        message = json.dumps({
-            "command": "dw_create_pocket",
-            "id": create_random_id(),
-            "params": [
-                args.pocket
-            ]
-        })
-    print("Sending:", message)
-    async with websockets.connect(websockets_path) as websocket:
-        await websocket.send(message)
-        response = json.loads(await websocket.recv())
-    print(response)
+        async with api.WebSocket(websockets_path) as ws:
+            ec, pockets = await api.Pocket.create(ws, args.pocket)
+        if ec:
+            print("Error: unable to create pocket.", ec, file=sys.stderr)
+            return
+        print("Pocket created.")
     return 0
 
 async def send(args, websockets_path):
@@ -206,50 +175,32 @@ async def send(args, websockets_path):
     assert args.amount
     address = args.address[0]
     amount = args.amount[0]
-    message = json.dumps({
-        "command": "dw_send",
-        "id": create_random_id(),
-        "params": [
-            [(address, amount)],
-            args.pocket,
-            args.fee
-        ]
-    })
-    print("Sending:", message)
-    async with websockets.connect(websockets_path) as websocket:
-        await websocket.send(message)
-        response = json.loads(await websocket.recv())
-    print(response)
+    dests = [(address, amount)]
+    async with api.WebSocket(websockets_path) as ws:
+        ec, tx_hash = await api.Wallet.send(ws, dests, args.pocket, args.fee)
+    if ec:
+        print("Error: sending funds.", ec, file=sys.stderr)
+        return
+    print(tx_hash)
     return 0
 
 async def recv(args, websockets_path):
-    message = json.dumps({
-        "command": "dw_receive",
-        "id": create_random_id(),
-        "params": [
-            args.pocket
-        ]
-    })
-    print("Sending:", message)
-    async with websockets.connect(websockets_path) as websocket:
-        await websocket.send(message)
-        response = json.loads(await websocket.recv())
-    print(response)
+    async with api.WebSocket(websockets_path) as ws:
+        ec, addrs = await api.Wallet.receive(ws, args.pocket)
+    if ec:
+        print("Error: fetching receive addresses.", ec, file=sys.stderr)
+        return
+    for addr in addrs:
+        print(addr)
     return 0
 
 async def stealth(args, websockets_path):
-    message = json.dumps({
-        "command": "dw_stealth",
-        "id": create_random_id(),
-        "params": [
-            args.pocket
-        ]
-    })
-    print("Sending:", message)
-    async with websockets.connect(websockets_path) as websocket:
-        await websocket.send(message)
-        response = json.loads(await websocket.recv())
-    print(response)
+    async with api.WebSocket(websockets_path) as ws:
+        ec, stealth_addr = await api.Wallet.stealth(ws, args.pocket)
+    if ec:
+        print("Error: fetching receive addresses.", ec, file=sys.stderr)
+        return
+    print(stealth_addr)
     return 0
 
 async def valid_addr(args, websockets_path):
