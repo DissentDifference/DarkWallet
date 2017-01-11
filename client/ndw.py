@@ -211,9 +211,17 @@ async def start(screen):
         curses.init_color(COLOR_DARKBLACK, 0, 0, 0)
         curses.init_color(COLOR_SUPERWHITE, 1000, 1000, 1000)
 
-    curses.init_pair(PAIR_ACTIVE_TAB, COLOR_SUPERWHITE, COLOR_DARKBLACK)
-    curses.init_pair(PAIR_INACTIVE_TAB, curses.COLOR_WHITE, curses.COLOR_BLACK)
-    curses.init_pair(PAIR_TABBAR_BG, COLOR_DARKBLACK, COLOR_SUPERWHITE)
+        curses.init_pair(PAIR_ACTIVE_TAB, COLOR_SUPERWHITE, COLOR_DARKBLACK)
+        curses.init_pair(PAIR_TABBAR_BG, COLOR_DARKBLACK, COLOR_SUPERWHITE)
+    else:
+        curses.init_pair(PAIR_ACTIVE_TAB,
+                         curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_pair(PAIR_TABBAR_BG,
+                         curses.COLOR_BLACK, curses.COLOR_WHITE)
+
+    curses.init_pair(PAIR_INACTIVE_TAB,
+                     curses.COLOR_WHITE, curses.COLOR_BLACK)
+
     curses.init_pair(PAIR_ACTIVE_ACCOUNT_SEL,
                      curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(PAIR_INACTIVE_ACCOUNT_SEL, curses.COLOR_WHITE, -1)
