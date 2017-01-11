@@ -13,6 +13,8 @@ PAIR_INACTIVE_TAB = 2
 PAIR_TABBAR_BG = 3
 PAIR_ACTIVE_ACCOUNT_SEL = 4
 PAIR_INACTIVE_ACCOUNT_SEL = 5
+PAIR_POSITIVE_VALUE = 6
+PAIR_NEGATIVE_VALUE = 7
 
 class Application:
 
@@ -231,6 +233,15 @@ class Application:
             if i != 0:
                 self.screen.addstr(3 + i * 2, 2, row_string, color)
 
+        for i, row in enumerate(self._history):
+            value = decimal.Decimal(row["value"]) / 10**8
+            if value >= 0:
+                color = curses.color_pair(PAIR_POSITIVE_VALUE)
+            else:
+                color = curses.color_pair(PAIR_NEGATIVE_VALUE)
+            self.screen.addstr(11 + i, 2, row["addr"])
+            self.screen.addstr(11 + i, 40, str(value), color)
+
     async def _create_pocket(self):
         pocket_name = ""
         while True:
@@ -399,6 +410,9 @@ async def start(screen):
     curses.init_pair(PAIR_ACTIVE_ACCOUNT_SEL,
                      curses.COLOR_BLACK, curses.COLOR_WHITE)
     curses.init_pair(PAIR_INACTIVE_ACCOUNT_SEL, curses.COLOR_WHITE, -1)
+
+    curses.init_pair(PAIR_POSITIVE_VALUE, curses.COLOR_GREEN, -1)
+    curses.init_pair(PAIR_NEGATIVE_VALUE, curses.COLOR_RED, -1)
 
     websockets_path = "ws://localhost:8888"
     async with api.WebSocket(websockets_path) as ws:
