@@ -60,15 +60,22 @@ class Application:
                 color = self._inactive_account_color()
             self.screen.addstr(6 + i, 4, pocket, color)
 
+        end_item = len(self._pockets) + 1
+        if self._current_pocket == end_item:
+            color = self._active_account_color()
+        else:
+            color = self._inactive_account_color()
+        self.screen.addstr(6 + end_item, 4, "New pocket", color)
+
     async def _display_stealth_addr(self):
         ec, stealth = await api.Wallet.stealth(self._ws, self._active_pocket)
-        off = 5 + len(self._pockets) + 2
+        off = 7 + len(self._pockets) + 2
         self.screen.addstr(off, 2, "Stealth address:")
         self.screen.addstr(off + 1, 4, stealth)
 
     async def _display_receive_addrs(self):
         ec, addrs = await api.Wallet.receive(self._ws, self._active_pocket)
-        off = 5 + len(self._pockets) + 5
+        off = 7 + len(self._pockets) + 5
         self.screen.addstr(off, 2, "Addresses:")
         for i, addr in enumerate(addrs):
             y = off + 1 + i
@@ -78,6 +85,11 @@ class Application:
                 break
             else:
                 self.screen.addstr(y, 4, addr)
+
+    def _display_status(self):
+        maxy = self.screen.getmaxyx()[0] - 1
+        self.screen.addstr(maxy, 0, self._status)
+        self._status = ""
 
     async def display_main_window(self):
         self.screen.clear()
@@ -91,6 +103,8 @@ class Application:
         await self._display_stealth_addr()
 
         await self._display_receive_addrs()
+
+        self._display_status()
 
         self.screen.refresh()
 
@@ -109,6 +123,7 @@ class Application:
 
         self._current_tab = self._account_names.index(self._active_account)
         self._current_pocket = 0
+        self._status = ""
         while True:
             await self.display_main_window()
             c = self.screen.getch()
@@ -124,12 +139,44 @@ class Application:
                 await self._activate_account()
             elif c == curses.KEY_DOWN:
                 self._current_pocket += 1
-                if self._current_pocket > len(self._pockets):
+                if self._current_pocket > len(self._pockets) + 1:
                     self._current_pocket = 0
             elif c == curses.KEY_UP:
                 self._current_pocket -= 1
                 if self._current_pocket < 0:
-                    self._current_pocket = len(self._pockets)
+                    self._current_pocket = len(self._pockets) + 1
+            elif c == curses.KEY_ENTER or c == 10 or c == 13:
+                if self._current_pocket == len(self._pockets) + 1:
+                    await self._create_pocket()
+
+    async def _create_pocket(self):
+        pocket_name = ""
+        while True:
+            self.screen.clear()
+
+            self._draw_tab_bar()
+
+            self.screen.addstr(2, 2, "Pocket name:")
+
+            self.screen.addstr(4, 4, pocket_name)
+
+            c = self.screen.getch()
+            if c == 27:
+                self._status = "Cancelled"
+                break
+            elif c == curses.KEY_ENTER or c == 10 or c == 13:
+                ec = await api.Pocket.create(self._ws, pocket_name)
+                if ec:
+                    self._status = ec.name
+                else:
+                    self._status = "Created"
+                break
+            elif c == curses.KEY_BACKSPACE:
+                pocket_name = pocket_name[:-1]
+            elif c == curses.KEY_LEFT or c == curses.KEY_RIGHT:
+                pass
+            else:
+                pocket_name += chr(c)
 
     async def _activate_account(self):
         self._active_pocket = None

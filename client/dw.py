@@ -160,7 +160,7 @@ async def pocket(args, websockets_path):
         })
     else:
         async with api.WebSocket(websockets_path) as ws:
-            ec, pockets = await api.Pocket.create(ws, args.pocket)
+            ec = await api.Pocket.create(ws, args.pocket)
         if ec:
             print("Error: unable to create pocket.", ec, file=sys.stderr)
             return
