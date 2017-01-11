@@ -169,6 +169,8 @@ class Application:
                 if self._selected_send_item > 3:
                     self._selected_send_item = 0
             elif c == curses.KEY_ENTER or c == 10 or c == 13:
+                if self._selected_send_item == 0:
+                    break
                 _, addr, amount, fee = self._send_fields
                 try:
                     decimal.Decimal(amount)
@@ -215,7 +217,7 @@ class Application:
 
             row_len = 32
             if i == 0:
-                self.screen.addstr(2, 2, "< Return", color)
+                self.screen.addstr(2, 2, "< Return back", color)
             elif i == 1:
                 row_len = 118
                 self.screen.addstr(4, 2, "Address:")
