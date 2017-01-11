@@ -76,12 +76,12 @@ class Application:
         while True:
             await self.display_main_window()
             c = self.screen.getch()
-            if c == curses.KEY_RIGHT:
+            if c == curses.KEY_RIGHT and len(self._account_names) > 1:
                 self._current_tab += 1
                 if self._current_tab >= len(self._account_names):
                     self._current_tab = 0
                 await self._activate_account()
-            elif c == curses.KEY_LEFT:
+            elif c == curses.KEY_LEFT and len(self._account_names) > 1:
                 self._current_tab -= 1
                 if self._current_tab < 0:
                     self._current_tab = len(self._account_names) - 1
