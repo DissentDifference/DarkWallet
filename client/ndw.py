@@ -229,6 +229,9 @@ class Application:
             elif i == 3:
                 self.screen.addstr(8, 2, "Fee:")
 
+            if row_len >= self.screen.getmaxyx()[1] - 2:
+                row_len = self.screen.getmaxyx()[1] - 2
+
             value = self._send_fields[i]
             row_string = value + "_" * (row_len - len(value))
             if i != 0:
@@ -251,8 +254,13 @@ class Application:
                 color = curses.color_pair(PAIR_POSITIVE_VALUE)
             else:
                 color = curses.color_pair(PAIR_NEGATIVE_VALUE)
-            self.screen.addstr(11 + i, 2, addr)
-            self.screen.addstr(11 + i, 40, str(value), color)
+            maxy = self.screen.getmaxyx()[0] - 2
+            y = 11 + i
+            if y == maxy:
+                self.screen.addstr(y, 2, "...")
+                break
+            self.screen.addstr(y, 2, addr)
+            self.screen.addstr(y, 40, str(value), color)
 
     async def _create_pocket(self):
         pocket_name = ""
