@@ -750,6 +750,7 @@ class Account:
         if pocket is None:
             return ErrorCode.duplicate
 
+        self._generate_pocket_keys(pocket)
         return None
 
     def delete_pocket(self, pocket_name):
