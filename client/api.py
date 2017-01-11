@@ -113,6 +113,14 @@ class Account:
         assert ec is None
         return params
 
+    @staticmethod
+    async def seed(ws):
+        ec, params = await ws.query("dw_seed")
+        if ec:
+            assert ec in (ErrorCode.no_active_account_set,)
+            return ec, None
+        return None, params
+
 class Pocket:
 
     @staticmethod
@@ -187,4 +195,10 @@ class Wallet:
                           ErrorCode.not_found)
             return ec, []
         return None, params[0]
+
+class Daemon:
+
+    @staticmethod
+    async def stop(ws):
+        await ws.query("dw_stop")
 

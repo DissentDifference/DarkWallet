@@ -41,17 +41,14 @@ async def init(args, websockets_path):
     return 0
 
 async def seed(args, websockets_path):
-    message = json.dumps({
-        "command": "dw_seed",
-        "id": create_random_id(),
-        "params": [
-        ]
-    })
-    print("Sending:", message)
-    async with websockets.connect(websockets_path) as websocket:
-        await websocket.send(message)
-        response = json.loads(await websocket.recv())
-    print(response)
+    async with api.WebSocket(websockets_path) as ws:
+        ec, seed = await api.Account.seed(ws)
+
+    if ec:
+        print("Error: failed to get seed.", ec, file=sys.stderr)
+        return -1
+
+    print(" ".join(seed))
     return 0
 
 async def restore(args, websockets_path):
@@ -260,15 +257,8 @@ async def setting(args, websockets_path):
     print(response)
 
 async def stop(args, websockets_path):
-    message = json.dumps({
-        "command": "dw_stop",
-        "id": create_random_id(),
-        "params": [
-        ]
-    })
-    print("Sending:", message)
-    async with websockets.connect(websockets_path) as websocket:
-        await websocket.send(message)
+    async with api.WebSocket(websockets_path) as ws:
+        await api.Daemon.stop(ws)
 
 async def main():
     # Command line arguments
