@@ -24,6 +24,7 @@ class Gateway:
         self.context.stop()
 
     async def _accept(self, websocket, path):
+        print("Connection opened.")
         try:
             while True:
                 await self._process(websocket, path)
