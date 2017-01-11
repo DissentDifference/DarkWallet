@@ -391,6 +391,8 @@ async def main():
     screen = curses.initscr()
     try:
         await start(screen)
+    except KeyboardInterrupt:
+        finish(screen)
     except:
         finish(screen)
         traceback.print_exc()
