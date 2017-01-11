@@ -103,7 +103,7 @@ class Account:
         ec, params = await ws.query("dw_create_account",
                                     name, password, is_testnet)
         if ec:
-            assert ec in (ErrorCode.duplicate,)
+            assert ec in (ErrorCode.duplicate, ErrorCode.short_password)
             return ec
         return None
 

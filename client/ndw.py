@@ -113,6 +113,7 @@ class Application:
         self.screen.refresh()
 
     async def start(self):
+        self._status = ""
         self._active_account = None
         self._active_pocket = None
 
@@ -127,7 +128,6 @@ class Application:
 
         self._current_tab = self._account_names.index(self._active_account)
         self._current_pocket = 0
-        self._status = ""
         while True:
             await self.display_main_window()
             c = self.screen.getch()
@@ -338,10 +338,11 @@ class Application:
         return curses.color_pair(PAIR_INACTIVE_ACCOUNT_SEL)
 
     async def _select_account(self):
-        self.screen.addstr(1, 2, "Select an account:")
         row_len = 20
         selected = 0
         while True:
+            self.screen.clear()
+            self.screen.addstr(1, 2, "Select an account:")
             rows = self._account_names + ["New account"]
             for i, account in enumerate(rows):
                 row_string = "  %s" % account
@@ -351,6 +352,7 @@ class Application:
                 else:
                     color = self._inactive_account_color()
                 self.screen.addstr(i + 3, 2, row_string, color)
+            self._display_status()
             self.screen.refresh()
             c = self.screen.getch()
             if c == curses.KEY_UP:
@@ -363,7 +365,8 @@ class Application:
                     selected = 0
             elif c == curses.KEY_ENTER or c == 10 or c == 13:
                 if selected == len(rows) - 1:
-                    pass
+                    await self._new_account()
+                    break
                 else:
                     account_name = rows[selected]
                     password = self._enter_password()
@@ -372,6 +375,62 @@ class Application:
                         self.screen.addstr(10, 2, "Error: %s" % ec.name)
                     else:
                         return
+
+    async def _new_account(self):
+        index = 0
+        account_name = ""
+        password = ""
+        is_testnet = False
+        while True:
+            self.screen.clear()
+            self.screen.addstr(1, 2, "Account name:")
+            if index == 0:
+                color = self._active_account_color()
+            else:
+                color = self._inactive_account_color()
+            row_len = 26
+            acc_row = account_name + "_" * (row_len - len(account_name))
+            self.screen.addstr(2, 2, acc_row, color)
+            self.screen.addstr(3, 2, "Password:")
+            if index == 1:
+                color = self._active_account_color()
+            else:
+                color = self._inactive_account_color()
+            pass_row = "*" * len(password) + "_" * (row_len - len(password))
+            self.screen.addstr(4, 2, pass_row, color)
+            if index == 2:
+                color = self._active_account_color()
+            else:
+                color = self._inactive_account_color()
+            mark = "X" if is_testnet else " "
+            self.screen.addstr(6, 2, "[%s] Testnet" % mark, color)
+            c = self.screen.getch()
+            if c == curses.KEY_BACKSPACE:
+                if index == 0:
+                    account_name = account_name[:-1]
+                elif index == 1:
+                    password = password[:-1]
+            elif c == curses.KEY_ENTER or c == 10 or c == 13:
+                ec = await api.Account.create(self._ws, account_name,
+                                              password, is_testnet)
+                if ec:
+                    self._status = ec.name
+                break
+            elif c == curses.KEY_UP:
+                index -= 1
+                if index < 0:
+                    index = 2
+            elif c == curses.KEY_DOWN:
+                index += 1
+                if index >= 3:
+                    index = 0
+            elif c == ord(" ") and index == 2:
+                is_testnet = not is_testnet
+            else:
+                if index == 0:
+                    account_name += chr(c)
+                elif index == 1:
+                    password += chr(c)
 
     def _enter_password(self):
         password = ""
