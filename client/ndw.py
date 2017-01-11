@@ -233,13 +233,24 @@ class Application:
             if i != 0:
                 self.screen.addstr(3 + i * 2, 2, row_string, color)
 
-        for i, row in enumerate(self._history):
-            value = decimal.Decimal(row["value"]) / 10**8
+        history_items = []
+        for row in self._history:
+            if row["type"] == "output":
+                height = row["output"]["height"]
+            else:
+                height = row["spend"]["height"]
+            history_items.append((row["addr"], row["value"], height))
+        get_height = lambda item: item[2]
+        history_items.sort(key=get_height, reverse=True)
+
+        for i, row in enumerate(history_items):
+            addr, value, height = row
+            value = decimal.Decimal(value) / 10**8
             if value >= 0:
                 color = curses.color_pair(PAIR_POSITIVE_VALUE)
             else:
                 color = curses.color_pair(PAIR_NEGATIVE_VALUE)
-            self.screen.addstr(11 + i, 2, row["addr"])
+            self.screen.addstr(11 + i, 2, addr)
             self.screen.addstr(11 + i, 40, str(value), color)
 
     async def _create_pocket(self):
