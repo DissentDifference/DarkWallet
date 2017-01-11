@@ -175,6 +175,7 @@ class Wallet:
     @staticmethod
     async def send(ws, dests, pocket=None, fee=None):
         dests = [(addr, btc_to_satoshi(amount)) for addr, amount in dests]
+        fee = btc_to_satoshi(fee)
         ec, params = await ws.query("dw_send",
                                     dests, pocket, fee)
         if ec:
@@ -206,6 +207,13 @@ class Wallet:
         return None, params[0]
 
 class Daemon:
+
+    @staticmethod
+    async def validate_address(ws, address):
+        ec, params = await ws.query("dw_validate_address",
+                                    address)
+        assert ec is None
+        return params[0]
 
     @staticmethod
     async def stop(ws):

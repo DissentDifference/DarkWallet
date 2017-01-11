@@ -1,5 +1,6 @@
 import asyncio
 import curses
+import decimal
 import traceback
 
 import api
@@ -148,6 +149,85 @@ class Application:
             elif c == curses.KEY_ENTER or c == 10 or c == 13:
                 if self._current_pocket == len(self._pockets) + 1:
                     await self._create_pocket()
+                else:
+                    await self._send_screen()
+
+    async def _send_screen(self):
+        ec, self._history = await api.Wallet.history(self._ws,
+                                                     self._active_pocket)
+        self._send_fields = ["", "", "", ""]
+        self._selected_send_item = 0
+        while True:
+            self._display_history()
+            c = self.screen.getch()
+            if c == curses.KEY_UP:
+                self._selected_send_item -= 1
+                if self._selected_send_item < 0:
+                    self._selected_send_item = 3
+            elif c == curses.KEY_DOWN:
+                self._selected_send_item += 1
+                if self._selected_send_item > 3:
+                    self._selected_send_item = 0
+            elif c == curses.KEY_ENTER or c == 10 or c == 13:
+                _, addr, amount, fee = self._send_fields
+                try:
+                    decimal.Decimal(amount)
+                except decimal.InvalidOperation:
+                    self._status = "Invalid amount"
+                    break
+                try:
+                    decimal.Decimal(fee)
+                except decimal.InvalidOperation:
+                    self._status = "Invalid fee"
+                    break
+                addr_type = await api.Daemon.validate_address(self._ws,
+                                                              addr)
+                if addr_type == "invalid":
+                    self._status = "Invalid address"
+                    break
+                dests = [(addr, amount)]
+                ec, tx_hash = await api.Wallet.send(self._ws, dests, fee=fee,
+                                                    pocket=self._active_pocket)
+                if ec:
+                    self._status = ec.name
+                else:
+                    self._status = "Sent %s" % tx_hash
+                break
+            elif c == curses.KEY_BACKSPACE:
+                self._send_fields[self._selected_send_item] = \
+                        self._send_fields[self._selected_send_item][:-1]
+            elif c == curses.KEY_LEFT or c == curses.KEY_RIGHT:
+                pass
+            else:
+                self._send_fields[self._selected_send_item] += chr(c)
+
+    def _display_history(self):
+        self.screen.clear()
+
+        self._draw_tab_bar()
+
+
+        for i in range(4):
+            if i == self._selected_send_item:
+                color = self._active_account_color()
+            else:
+                color = self._inactive_account_color()
+
+            row_len = 32
+            if i == 0:
+                self.screen.addstr(2, 2, "< Return", color)
+            elif i == 1:
+                row_len = 118
+                self.screen.addstr(4, 2, "Address:")
+            elif i == 2:
+                self.screen.addstr(6, 2, "Amount:")
+            elif i == 3:
+                self.screen.addstr(8, 2, "Fee:")
+
+            value = self._send_fields[i]
+            row_string = value + "_" * (row_len - len(value))
+            if i != 0:
+                self.screen.addstr(3 + i * 2, 2, row_string, color)
 
     async def _create_pocket(self):
         pocket_name = ""
