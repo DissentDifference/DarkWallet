@@ -82,6 +82,7 @@ class Application:
             await api.Wallet.pending_payments(self._ws, self._active_pocket)
 
         if ec or not pending_payments:
+            self._pending_payments_panel_height = 0
             return
 
         # Pending payments title
