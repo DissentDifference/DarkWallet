@@ -98,6 +98,10 @@ class Application:
             total_y_size += 1
             total_y_size += len(payment["destinations"])
 
+        # hack
+        if len(pending_payments) == 1:
+            total_y_size += 1
+
         self._pending_payments_panel_height = total_y_size
 
         start_y = self.screen.getmaxyx()[0] - total_y_size
