@@ -187,6 +187,26 @@ class Wallet:
         return None, params[0]
 
     @staticmethod
+    async def pending_payments(ws, pocket=None):
+        ec, params = await ws.query("dw_pending_payments",
+                                    pocket)
+        if ec:
+            assert ec in (ErrorCode.no_active_account_set,
+                          ErrorCode.not_found)
+            return ec, None
+        pending_payments = []
+        for payment in params:
+            pending_payments.append({
+                "tx_hash": payment["tx_hash"],
+                "created_date": payment["created_date"],
+                "destinations": [
+                    (address, satoshi_to_btc(value)) for address, value
+                    in payment["destinations"]
+                ]
+            })
+        return None, pending_payments
+
+    @staticmethod
     async def receive(ws, pocket=None):
         ec, params = await ws.query("dw_receive",
                                     pocket)

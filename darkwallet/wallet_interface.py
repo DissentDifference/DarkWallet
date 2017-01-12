@@ -1,3 +1,5 @@
+import sys
+
 import darkwallet.wallet
 from darkwallet.address_validator import AddressValidator, AddressType
 
@@ -15,8 +17,8 @@ class WalletInterfaceCallback:
 
     async def query(self):
         if not self.initialize(self._params):
-            logging.error("Bad parameters specified: %s",
-                          self._params, exc_info=True)
+            print("Error: bad parameters specified:",
+                  self._params, file=sys.stderr)
             return None
         ec, result = await self.make_query()
         return self._response(ec, result)
@@ -166,6 +168,17 @@ class DwSend(WalletInterfaceCallback):
     async def make_query(self):
         return await self._wallet.send(self._dests, self._pocket, self._fee)
 
+class DwPendingPayments(WalletInterfaceCallback):
+
+    def initialize(self, params):
+        if len(params) != 1:
+            return False
+        self._pocket = params[0]
+        return True
+
+    async def make_query(self):
+        return await self._wallet.pending_payments(self._pocket)
+
 class DwReceive(WalletInterfaceCallback):
 
     def initialize(self, params):
@@ -251,6 +264,7 @@ class WalletInterface:
         "dw_create_pocket":     DwCreatePocket,
         "dw_delete_pocket":     DwDeletePocket,
         "dw_send":              DwSend,
+        "dw_pending_payments":  DwPendingPayments,
         "dw_receive":           DwReceive,
         "dw_stealth":           DwStealth,
         "dw_validate_address":  DwValidateAddress,

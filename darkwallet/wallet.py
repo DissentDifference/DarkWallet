@@ -35,6 +35,9 @@ def hd_private_key_to_address(key, is_testnet):
     assert address.is_valid()
     return str(address)
 
+def decimal_to_satoshi(value):
+    return int(value * (10**bc.btc_decimal_places))
+
 class ErrorCode(enum.Enum):
     wrong_password = 1
     invalid_brainwallet = 2
@@ -184,6 +187,11 @@ class AccountModel:
         print("%s is confirmed." % bc.encode_hash(tx_hash))
         sent_model.is_confirmed = True
         sent_model.save()
+
+    def all_pending_payments(self):
+        pending = db.SentPayments.select().where(
+            db.SentPayments.is_confirmed == False)
+        return [PendingPaymentModel(payment) for payment in pending]
 
 class PocketModel:
 
@@ -349,6 +357,12 @@ class PocketModel:
     def model(self):
         return self._model
 
+    def pending_payments(self):
+        pending = db.SentPayments.select().where(
+            db.SentPayments.is_confirmed == False,
+            db.SentPayments.pocket == self._model)
+        return [PendingPaymentModel(payment) for payment in pending]
+
 class CacheModel:
 
     def __init__(self, account_model):
@@ -504,7 +518,7 @@ class HistoryRowModel:
     @property
     def value(self):
         value = self._model.value
-        return int(value * (10**bc.btc_decimal_places))
+        return decimal_to_satoshi(value)
 
     def value_minus_change(self):
         if self.is_output:
@@ -558,6 +572,24 @@ class TransactionCacheModel:
         except db.DoesNotExist:
             return False
         return True
+
+class PendingPaymentModel:
+
+    def __init__(self, model):
+        self._model = model
+
+    @property
+    def tx_hash(self):
+        return self._model.tx_hash
+
+    @property
+    def created_date(self):
+        return self._model.created_date
+
+    @property
+    def destinations(self):
+        return [(dest.address, dest.value) for dest
+                in self._model.destinations]
 
 class Account:
 
@@ -1117,6 +1149,31 @@ class Account:
         pocket = self._model.pocket(from_pocket)
         self._model.save_pending_transaction(dests, tx, pocket)
 
+    def pending_payments(self, pocket_name):
+        if pocket_name is None:
+            payments = self._model.all_pending_payments()
+            payments = self._format_pending_payments(payments)
+            return None, payments
+
+        pocket = self._model.pocket(pocket_name)
+        if pocket is None:
+            return ErrorCode.not_found, []
+
+        payments = pocket.pending_payments()
+        payments = self._format_pending_payments(payments)
+
+        return None, payments
+
+    def _format_pending_payments(self, pending_payments):
+        return [{
+            "tx_hash": bc.encode_hash(payment.tx_hash),
+            "created_date": payment.created_date.strftime("%d %b %Y"),
+            "destinations": [
+                (address, decimal_to_satoshi(value)) for address, value
+                in payment.destinations
+            ]
+            } for payment in pending_payments]
+
 def create_brainwallet_seed():
     entropy = os.urandom(16)
     return bc.create_mnemonic(entropy)
@@ -1282,6 +1339,11 @@ class Wallet:
         dests = [(addr, int(amount)) for addr, amount in dests]
         ec, tx_hash = await self._account.send(dests, from_pocket, fee)
         return ec, [tx_hash]
+
+    async def pending_payments(self, pocket):
+        if self._account is None:
+            return ErrorCode.no_active_account_set, []
+        return self._account.pending_payments(pocket)
 
     async def receive(self, pocket):
         if self._account is None:
