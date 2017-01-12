@@ -175,6 +175,16 @@ class AccountModel:
                 value=value
             )
 
+    def mark_sent_transaction_confirmed(self, tx_hash):
+        try:
+            sent_model = db.SentPayments.get(
+                db.SentPayments.tx_hash == tx_hash)
+        except db.DoesNotExist:
+            return
+        print("%s is confirmed." % bc.encode_hash(tx_hash))
+        sent_model.is_confirmed = True
+        sent_model.save()
+
 class PocketModel:
 
     def __init__(self, model):
@@ -676,6 +686,11 @@ class Account:
 
         print("Fetching history for", address)
         self._model.cache.history.set(address, history, pocket)
+        for output, spend in history:
+            if spend is None:
+                continue
+            tx_hash = bc.HashDigest.from_bytes(spend[0].hash[::-1])
+            self._model.mark_sent_transaction_confirmed(tx_hash)
 
     async def _fill_cache(self):
         for tx_hash in self._model.cache.history.transaction_hashes:
