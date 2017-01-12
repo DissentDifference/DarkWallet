@@ -168,10 +168,12 @@ class AccountModel:
             tx_hash=tx.hash(),
             tx=tx,
             account=self._model,
-            pocket=pocket
+            pocket=pocket.model
         )
 
         for address, value in dests:
+            value = Decimal(
+                bc.encode_base10(value, bc.btc_decimal_places))
             db.SentPaymentDestinations.create(
                 parent=pending_tx,
                 address=address,
