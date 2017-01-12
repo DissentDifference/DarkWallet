@@ -120,7 +120,7 @@ class Application:
             self.screen.addstr(y, 4 + 64 + 2, payment["created_date"])
             for address, value in payment["destinations"]:
                 y += 1
-                value = decimal.Decimal(value) / 10**8
+                value = decimal.Decimal(value)
                 if value >= 0:
                     color = curses.color_pair(PAIR_POSITIVE_VALUE)
                 else:
