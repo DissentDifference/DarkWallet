@@ -230,11 +230,12 @@ class Application:
             elif i == 3:
                 self.screen.addstr(10, 2, "Fee:")
 
-            if row_len >= self.screen.getmaxyx()[1] - 2:
-                row_len = self.screen.getmaxyx()[1] - 2
-
             value = self._send_fields[i]
             row_string = value + "_" * (row_len - len(value))
+
+            max_row_len = self.screen.getmaxyx()[1] - 2
+            row_string = row_string[:max_row_len]
+
             if i != 0:
                 self.screen.addstr(5 + i * 2, 2, row_string, color)
 
