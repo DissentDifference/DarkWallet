@@ -161,7 +161,7 @@ class Application:
         self._send_fields = ["", "", "", ""]
         self._selected_send_item = 0
         while True:
-            self._display_history()
+            await self._display_history()
             c = self.screen.getch()
             if c == curses.KEY_UP:
                 self._selected_send_item -= 1
@@ -206,11 +206,12 @@ class Application:
             else:
                 self._send_fields[self._selected_send_item] += chr(c)
 
-    def _display_history(self):
+    async def _display_history(self):
         self.screen.clear()
 
         self._draw_tab_bar()
 
+        await self._display_balance()
 
         for i in range(4):
             if i == self._selected_send_item:
@@ -220,14 +221,14 @@ class Application:
 
             row_len = 32
             if i == 0:
-                self.screen.addstr(2, 2, "< Return back", color)
+                self.screen.addstr(4, 2, "< Return back", color)
             elif i == 1:
                 row_len = 118
-                self.screen.addstr(4, 2, "Address:")
+                self.screen.addstr(6, 2, "Address:")
             elif i == 2:
-                self.screen.addstr(6, 2, "Amount:")
+                self.screen.addstr(8, 2, "Amount:")
             elif i == 3:
-                self.screen.addstr(8, 2, "Fee:")
+                self.screen.addstr(10, 2, "Fee:")
 
             if row_len >= self.screen.getmaxyx()[1] - 2:
                 row_len = self.screen.getmaxyx()[1] - 2
@@ -235,7 +236,7 @@ class Application:
             value = self._send_fields[i]
             row_string = value + "_" * (row_len - len(value))
             if i != 0:
-                self.screen.addstr(3 + i * 2, 2, row_string, color)
+                self.screen.addstr(5 + i * 2, 2, row_string, color)
 
         history_items = []
         for row in self._history:
@@ -255,7 +256,7 @@ class Application:
             else:
                 color = curses.color_pair(PAIR_NEGATIVE_VALUE)
             maxy = self.screen.getmaxyx()[0] - 2
-            y = 11 + i
+            y = 13 + i
             if y == maxy:
                 self.screen.addstr(y, 2, "...")
                 break
