@@ -121,10 +121,7 @@ class Application:
             for address, value in payment["destinations"]:
                 y += 1
                 value = decimal.Decimal(value)
-                if value >= 0:
-                    color = curses.color_pair(PAIR_POSITIVE_VALUE)
-                else:
-                    color = curses.color_pair(PAIR_NEGATIVE_VALUE)
+                color = curses.color_pair(PAIR_NEGATIVE_VALUE)
                 address = address[:64]
                 self.screen.addstr(y, 4, address)
                 self.screen.addstr(y, 4 + 64 + 2, str(value), color)
