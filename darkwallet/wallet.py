@@ -164,11 +164,13 @@ class AccountModel:
         return self._model.payment_address_version()
 
     def save_pending_transaction(self, dests, tx, pocket):
+        pocket_model = pocket.model if pocket else None
+
         pending_tx = db.SentPayments.create(
             tx_hash=tx.hash(),
             tx=tx,
             account=self._model,
-            pocket=pocket.model
+            pocket=pocket_model
         )
 
         for address, value in dests:
