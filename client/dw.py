@@ -219,7 +219,7 @@ async def valid_addr(args, websockets_path):
 async def get_height(args, websockets_path):
     message = json.dumps({
         "command": "dw_get_height",
-        "id": create_random_id(),
+        "id": api.create_random_id(),
         "params": [
         ]
     })

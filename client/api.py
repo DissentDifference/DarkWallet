@@ -203,7 +203,7 @@ class Wallet:
         if ec:
             assert ec in (ErrorCode.no_active_account_set,
                           ErrorCode.not_found)
-            return ec, []
+            return ec, None
         return None, params[0]
 
 class Daemon:
