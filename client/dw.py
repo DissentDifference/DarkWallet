@@ -181,7 +181,7 @@ async def send(args, websockets_path):
     print(tx_hash)
     return 0
 
-async def pending_payments(args, websockets_path):
+async def pending(args, websockets_path):
     async with api.WebSocket(websockets_path) as ws:
         ec, pending_payments = \
             await api.Wallet.pending_payments(ws, args.pocket)
@@ -348,12 +348,11 @@ async def main():
                              help="Fee to pay", default=0)
     parser_send.set_defaults(func=send)
 
-    parser_pending_payments = subparsers.add_parser(
-        "pending_payments",
-        help="Show pending_payments")
-    parser_pending_payments.add_argument("pocket", nargs="?", metavar="POCKET",
+    parser_pending = subparsers.add_parser("pending",
+                                           help="Show pending_payments")
+    parser_pending.add_argument("pocket", nargs="?", metavar="POCKET",
                                 default=None, help="Pocket name")
-    parser_pending_payments.set_defaults(func=pending_payments)
+    parser_pending.set_defaults(func=pending)
 
     parser_recv = subparsers.add_parser("recv", help="Receive Bitcoins")
     parser_recv.add_argument("pocket", nargs="?", metavar="POCKET",
