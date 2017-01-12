@@ -77,6 +77,53 @@ class Application:
         self.screen.addstr(off, 2, "Stealth address:")
         self.screen.addstr(off + 1, 4, stealth)
 
+    async def _display_pending_payments(self):
+        ec, pending_payments = \
+            await api.Wallet.pending_payments(self._ws, self._active_pocket)
+
+        if ec or not pending_payments:
+            return
+
+        # Pending payments title
+        total_y_size = 1
+        start = True
+        for payment in pending_payments:
+            if start:
+                start = False
+            else:
+                # Blank line
+                total_y_size += 2
+            # tx_hash, creation date
+            total_y_size += 1
+            total_y_size += len(payment["destinations"])
+
+        self._pending_payments_panel_height = total_y_size
+
+        start_y = self.screen.getmaxyx()[0] - total_y_size
+        max_x = self.screen.getmaxyx()[1]
+
+        y = start_y
+        self.screen.addstr(y, 2, "Pending payments:")
+        y += 1
+        start = True
+        for payment in pending_payments:
+            if start:
+                start = False
+            else:
+                y += 2
+            self.screen.addstr(y, 4, payment["tx_hash"])
+            self.screen.addstr(y, 4 + 64 + 2, payment["created_date"])
+            for address, value in payment["destinations"]:
+                y += 1
+                value = decimal.Decimal(value) / 10**8
+                if value >= 0:
+                    color = curses.color_pair(PAIR_POSITIVE_VALUE)
+                else:
+                    color = curses.color_pair(PAIR_NEGATIVE_VALUE)
+                address = address[:64]
+                self.screen.addstr(y, 4, address)
+                self.screen.addstr(y, 4 + 64 + 2, str(value), color)
+
     async def _display_receive_addrs(self):
         ec, addrs = await api.Wallet.receive(self._ws, self._active_pocket)
         off = 7 + len(self._pockets) + 5
@@ -84,6 +131,7 @@ class Application:
         for i, addr in enumerate(addrs):
             y = off + 1 + i
             maxy = self.screen.getmaxyx()[0] - 2
+            maxy -= self._pending_payments_panel_height
             if y == maxy:
                 self.screen.addstr(y, 4, "...")
                 break
@@ -105,6 +153,8 @@ class Application:
         await self._display_balance()
 
         await self._display_stealth_addr()
+
+        await self._display_pending_payments()
 
         await self._display_receive_addrs()
 
