@@ -160,6 +160,21 @@ class AccountModel:
     def payment_address_version(self):
         return self._model.payment_address_version()
 
+    def save_pending_transaction(self, dests, tx, pocket):
+        pending_tx = db.SentPayments.create(
+            tx_hash=tx.hash(),
+            tx=tx,
+            account=self._model,
+            pocket=pocket
+        )
+
+        for address, value in dests:
+            db.SentPaymentDestinations.create(
+                parent=pending_tx,
+                address=address,
+                value=value
+            )
+
 class PocketModel:
 
     def __init__(self, model):
@@ -927,7 +942,12 @@ class Account:
 
         print("Broadcasting:", tx.to_data().hex())
         ec = await self.client.broadcast(tx.to_data())
-        return ec, bc.encode_hash(tx.hash())
+        if ec:
+            return ec, None
+
+        self._save_pending_transaction(dests, tx, from_pocket)
+
+        return None, bc.encode_hash(tx.hash())
 
     def _unspent_inputs(self, from_pocket):
         pocket = self._model.pocket(from_pocket)
@@ -1077,6 +1097,10 @@ class Account:
             p2kh = bc.PaymentAddress.testnet_p2kh
             p2sh = bc.PaymentAddress.testnet_p2sh
         return bc.PaymentAddress.extract(prevout_script, p2kh, p2sh)
+
+    def _save_pending_transaction(self, dests, tx, from_pocket):
+        pocket = self._model.pocket(from_pocket)
+        self._model.save_pending_transaction(dests, tx, pocket)
 
 def create_brainwallet_seed():
     entropy = os.urandom(16)

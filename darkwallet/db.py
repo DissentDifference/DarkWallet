@@ -1,3 +1,4 @@
+import datetime
 from enum import Enum
 from playhouse.sqlcipher_ext import *
 from darkwallet.db_fields import *
@@ -75,6 +76,21 @@ class History(BaseModel):
 
     value = BitcoinValueField()
 
+class SentPayments(BaseModel):
+    tx_hash = HashDigestField(unique=True)
+    tx = TransactionField()
+    replaced_by = ForeignKeyField("self", null=True, default=None)
+    is_confirmed = BooleanField(default=False)
+    created_date = DateTimeField(default=datetime.datetime.now)
+
+    account = ForeignKeyField(Account, related_name="sent_payments")
+    pocket = ForeignKeyField(Pocket, null=True, related_name="sent_payments")
+
+class SentPaymentDestinations(BaseModel):
+    parent = ForeignKeyField(SentPayments, related_name="destinations")
+    address = CharField(index=True)
+    value = BitcoinValueField()
+
 def initialize(filename, passphrase):
     db.init(filename, passphrase=passphrase)
 
@@ -85,6 +101,8 @@ def create_tables():
         PocketKeys,
         PocketStealthKeys,
         TransactionCache,
-        History
+        History,
+        SentPayments,
+        SentPaymentDestinations
     ])
 
