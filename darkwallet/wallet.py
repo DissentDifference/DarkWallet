@@ -659,9 +659,9 @@ class Account:
         head = await self._query_blockchain_head()
         if head is None:
             return
-        height, header = head
-        index = height, header.hash()
-        print("Last height:", height)
+        last_height, header = head
+        index = last_height, header.hash()
+        print("Last height:", last_height)
         print("Current height:", self._model.current_height)
         if self._model.compare_indexes(index):
             # Nothing changed.
