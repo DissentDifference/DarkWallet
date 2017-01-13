@@ -668,7 +668,7 @@ class Account:
             return
         if header.previous_block_hash == self._model.current_hash:
             print("New block added.")
-            from_height = height
+            from_height = self._model.current_height
         else:
             print("Blockchain reorganization event.")
             self._updating_history = True
