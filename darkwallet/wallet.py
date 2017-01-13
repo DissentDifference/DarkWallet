@@ -651,8 +651,6 @@ class Account:
         print("Connected to %s" % url)
 
     async def _check_updates(self):
-        self.current_height = None
-        self.current_hash = None
         while True:
             await self._query_blockchain_reorg()
             await asyncio.sleep(5)
@@ -663,11 +661,16 @@ class Account:
             return
         height, header = head
         index = height, header.hash()
+        print("Last height:", height)
+        print("Current height:", self._model.current_height)
         if self._model.compare_indexes(index):
             # Nothing changed.
             return
         if header.previous_block_hash == self._model.current_hash:
-            print("New block added.")
+            print("New single block added.")
+            from_height = self._model.current_height
+        elif await self._index_is_connected(index):
+            print("Several new blocks added.")
             from_height = self._model.current_height
         else:
             print("Blockchain reorganization event.")
@@ -676,6 +679,32 @@ class Account:
             self._clear_history()
         await self._update(index, from_height)
         self._finish_reorg(index)
+
+    async def _index_is_connected(self, index):
+        height, hash_ = index
+        print("Rewinding from:", index)
+
+        if height <= self._model.current_height:
+            print("Rewinded past current index.")
+            return False
+
+        ec, header = await self.client.block_header(height)
+        if ec:
+            print("Error: querying header:", ec, file=sys.stderr)
+            return False
+        header = bc.Header.from_data(header)
+
+        if header.hash() != hash_:
+            print("Error: non-matching header and index hash.",
+                  file=sys.stderr)
+            return False
+
+        if header.previous_block_hash == self._model.current_hash:
+            return True
+
+        previous_index = height - 1, header.previous_block_hash
+
+        return await self._index_is_connected(previous_index)
 
     async def _query_blockchain_head(self):
         ec, height = await self.client.last_height()
