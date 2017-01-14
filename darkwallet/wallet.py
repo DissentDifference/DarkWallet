@@ -625,6 +625,10 @@ class PendingPaymentModel:
         return self._model.tx_hash
 
     @property
+    def transaction(self):
+        return self._model.tx
+
+    @property
     def created_date(self):
         return self._model.created_date
 
@@ -1057,7 +1061,8 @@ class Account:
             "destinations": [
                 (address, decimal_to_satoshi(value)) for address, value
                 in payment.destinations
-            ]
+                ],
+            "fee": payment.transaction.fees()
             } for payment in pending_payments]
 
 def create_brainwallet_seed():

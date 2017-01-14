@@ -202,7 +202,8 @@ class Wallet:
                 "destinations": [
                     (address, satoshi_to_btc(value)) for address, value
                     in payment["destinations"]
-                ]
+                ],
+                "fee": satoshi_to_btc(payment["fee"])
             })
         return None, pending_payments
 
