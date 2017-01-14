@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import time
 import traceback
 
 import libbitcoin.server
@@ -14,7 +15,8 @@ class WalletControlProcess:
             ScanHistoryProcess(self, client, model),
             MarkSentPaymentsConfirmedProcess(self, client, model),
             FillCacheProcess(self, client, model),
-            GenerateKeysProcess(self, client, model, settings)
+            GenerateKeysProcess(self, client, model, settings),
+            RebroadcastProcess(self, cleint, model)
         ]
 
     def wakeup_processes(self):
@@ -44,12 +46,12 @@ class BaseProcess:
             except:
                 traceback.print_exc()
                 raise
+
+            self._wakeup_future = asyncio.Future()
             try:
                 await asyncio.wait_for(self._wakeup_future, 5)
             except asyncio.TimeoutError:
                 pass
-            finally:
-                self._wakeup_future = asyncio.Future()
 
     async def update(self):
         pass
@@ -353,4 +355,33 @@ class GenerateKeysProcess(BaseProcess):
             pocket.add_key()
         if remaining:
             print("Generated %s keys" % remaining)
+
+class RebroadcastProcess(BaseProcess):
+
+    def __init__(self, parent, client, model):
+        super().__init__(parent, client, model)
+
+        self._last_time = None
+
+    def _elapsed_time(self):
+        return time.time() - self._last_time if self._last_time else None
+
+    async def update(self):
+        elapsed_time = self._elapsed_time()
+
+        rebroadcast_time = 20 * 60
+
+        if elapsed_time is None or elapsed_time > rebroadcast_time:
+            await self._rebroadcast()
+
+            self._last_time = time.time()
+
+    async def _rebroadcast(self):
+        payments = self.model.all_pending_payments()
+        for tx in [payment.transaction for payment in payments]:
+            await self._broadcast(tx)
+
+    async def _broadcast(self, tx):
+        print("Broadcasting:", tx.to_data().hex())
+        ec = await self.client.broadcast(tx.to_data())
 
