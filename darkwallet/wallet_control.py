@@ -22,6 +22,9 @@ class WalletControlProcess:
     def wakeup_processes(self):
         [process.wakeup() for process in self._procs]
 
+    def stop(self):
+        [process.stop() for process in self._procs]
+
 class BaseProcess:
 
     def __init__(self, parent, client, model):
@@ -36,8 +39,12 @@ class BaseProcess:
         loop = asyncio.get_event_loop()
         self._task = loop.create_task(self._run())
 
+    def stop(self):
+        self._task.cancel()
+
     def wakeup(self):
-        self._wakeup_future.set_result(None)
+        if not self._wakeup_future.cancelled():
+            self._wakeup_future.set_result(None)
 
     async def _run(self):
         while True:

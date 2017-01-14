@@ -647,7 +647,6 @@ class Account:
         self._model = AccountModel(filename)
         self.client = None
 
-        self._scan_task = None
         self._updating_history = False
 
     def initialize_db(self, filename, password):
@@ -670,8 +669,7 @@ class Account:
         return self._model.load()
 
     def stop(self):
-        if self._scan_task is not None:
-            self._scan_task.cancel()
+        self._controller.stop()
 
     def start_scanning(self):
         self._connect()
