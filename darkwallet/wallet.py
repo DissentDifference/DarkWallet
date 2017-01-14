@@ -633,6 +633,10 @@ class Account:
 
     def start_scanning(self):
         self._connect()
+
+        #from darkwallet.wallet_control import WalletControlProcess
+        #self._controller = WalletControlProcess(self._model)
+
         loop = asyncio.get_event_loop()
         self._scan_task = loop.create_task(self._check_updates())
 
