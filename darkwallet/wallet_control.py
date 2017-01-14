@@ -2,18 +2,19 @@ import asyncio
 import sys
 import traceback
 
+import libbitcoin.server
 from libbitcoin import bc
 
 class WalletControlProcess:
 
-    def __init__(self, client, model):
+    def __init__(self, client, model, settings):
         self._procs = [
             QueryBlockchainReorganizationProcess(self, client, model),
             ScanStealthProcess(self, client, model),
             ScanHistoryProcess(self, client, model),
             MarkSentPaymentsConfirmedProcess(self, client, model),
             FillCacheProcess(self, client, model),
-            GenerateKeysProcess(self, client, model)
+            GenerateKeysProcess(self, client, model, settings)
         ]
 
     def wakeup_processes(self):
@@ -164,12 +165,16 @@ class QueryBlockchainReorganizationProcess(BaseProcess):
 class ScanStealthProcess(BaseProcess):
 
     @property
+    def _tracker(self):
+        return self.model.cache.track_address_updates
+
+    @property
     def _stealth_addrs(self):
         return [pocket.stealth_address for pocket in self.model.pockets]
 
     def _minimum_last_update_height(self):
         heights = []
-        for stealth_address in self.model.stealth_addrs:
+        for stealth_address in self._stealth_addrs:
             tracker = self.model.cache.track_address_updates
             last_updated_height = tracker.last_updated_height(stealth_address)
             heights.append(last_updated_height)
@@ -177,11 +182,19 @@ class ScanStealthProcess(BaseProcess):
         return min(heights)
 
     async def update(self):
+        if self.model.current_height is None:
+            return
+
         from_height = self._minimum_last_update_height()
+
+        if from_height == self.model.current_height:
+            return None
+        assert from_height < self.model.current_height
+
         await self._query_stealth(from_height)
 
-        for stealth_address in self.model.stealth_addrs:
-            self._mark_address_updated(address)
+        for stealth_address in self._stealth_addrs:
+            self._mark_address_updated(stealth_address)
 
     async def _query_stealth(self, from_height):
         genesis_height = 0
@@ -234,11 +247,18 @@ class ScanStealthProcess(BaseProcess):
 
     def _mark_address_updated(self, address):
         last_height = self.model.current_height
-        self.model.set_last_updated_height(address, last_height)
+        self._tracker.set_last_updated_height(address, last_height)
 
 class ScanHistoryProcess(BaseProcess):
 
+    @property
+    def _tracker(self):
+        return self.model.cache.track_address_updates
+
     async def update(self):
+        if self.model.current_height is None:
+            return
+
         tasks = []
         for pocket in self.model.pockets:
             tasks += [
@@ -251,9 +271,7 @@ class ScanHistoryProcess(BaseProcess):
         await asyncio.gather(*tasks)
 
     def _process(self, address, pocket):
-        tracker = self.model.cache.track_address_updates
-
-        from_height = tracker.last_updated_height(address)
+        from_height = self._tracker.last_updated_height(address)
 
         if from_height == self.model.current_height:
             return None
@@ -279,12 +297,12 @@ class ScanHistoryProcess(BaseProcess):
 
     def _mark_address_updated(self, address):
         last_height = self.model.current_height
-        self.model.set_last_updated_height(address, last_height)
+        self._tracker.set_last_updated_height(address, last_height)
 
 class MarkSentPaymentsConfirmedProcess(BaseProcess):
 
     async def update(self):
-        self.mark_any_confirmed_sent_payments()
+        self.model.mark_any_confirmed_sent_payments()
 
 class FillCacheProcess(BaseProcess):
 
@@ -307,6 +325,11 @@ class FillCacheProcess(BaseProcess):
 
 class GenerateKeysProcess(BaseProcess):
 
+    def __init__(self, parent, client, model, settings):
+        super().__init__(parent, client, model)
+
+        self._settings = settings
+
     async def update(self):
         await self._generate_keys()
 
@@ -328,5 +351,6 @@ class GenerateKeysProcess(BaseProcess):
         assert remaining >= 0
         for i in range(remaining):
             pocket.add_key()
-        print("Generated %s keys" % remaining)
+        if remaining:
+            print("Generated %s keys" % remaining)
 

@@ -73,7 +73,10 @@ class AccountModel:
 
     @property
     def current_index(self):
+        if self.current_height is None:
+            return None
         return self.current_height, self.current_hash
+
     @current_index.setter
     def current_index(self, current_index):
         block_height, block_hash = current_index
@@ -183,8 +186,9 @@ class AccountModel:
             )
 
     def mark_any_confirmed_sent_payments(self):
-        sent_rows = db.SentPayments.select().join(db.History).where(
-            db.SentPayments.tx_hash == db.History.hash)
+        sent_rows = db.SentPayments.select(db.SentPayments.tx_hash).join(
+            db.History, on=(
+                db.SentPayments.tx_hash == db.History.hash))
 
         for row in sent_rows:
             row.is_confirmed = True
@@ -380,7 +384,7 @@ class CacheModel:
 
     @property
     def track_address_updates(self):
-        return TrackAddressUpdatesModel()
+        return TrackAddressUpdatesModel(self._account_model)
 
 class HistoryModel:
 
@@ -562,13 +566,14 @@ class TrackAddressUpdatesModel:
     def clear(self):
         account = self._account_model
         query = db.TrackAddressUpdates.delete().where(
-            db.TrackAddressUpdates.account == account)
+            db.TrackAddressUpdates.account == self._account_model)
         query.execute()
 
     def _get_row(self, address):
         try:
             row = db.TrackAddressUpdates.get(
-                db.TrackAddressUpdates.address == address)
+                db.TrackAddressUpdates.address == address,
+                db.TrackAddressUpdates.account == self._account_model)
         except db.DoesNotExist:
             return None
         return row
@@ -579,6 +584,12 @@ class TrackAddressUpdatesModel:
 
     def set_last_updated_height(self, address, height):
         row = self._get_row(address)
+        if row is None:
+            row = db.TrackAddressUpdates.create(
+                account=self._account_model,
+                address=address,
+                last_updated_height=height
+            )
         row.last_updated_height = height
         row.save()
 
@@ -662,7 +673,8 @@ class Account:
         self._connect()
 
         from darkwallet.wallet_control import WalletControlProcess
-        self._controller = WalletControlProcess(self.client, self._model)
+        self._controller = WalletControlProcess(self.client, self._model,
+                                                self._settings)
 
     def _connect(self):
         client_settings = libbitcoin.server.ClientSettings()
@@ -687,7 +699,6 @@ class Account:
         if pocket is None:
             return ErrorCode.duplicate
 
-        self._generate_pocket_keys(pocket)
         return None
 
     def delete_pocket(self, pocket_name):
