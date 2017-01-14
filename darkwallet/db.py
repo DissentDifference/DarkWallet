@@ -75,7 +75,7 @@ class History(BaseModel):
 
     spend = ForeignKeyField("self", null=True)
 
-    hash = HashDigestField(unique=True)
+    hash = HashDigestField(index=True)
     index_ = IntegerField()
     height = IntegerField()
 

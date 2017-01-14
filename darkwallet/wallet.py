@@ -186,7 +186,7 @@ class AccountModel:
             )
 
     def mark_any_confirmed_sent_payments(self):
-        sent_rows = db.SentPayments.select(db.SentPayments.tx_hash).join(
+        sent_rows = db.SentPayments.select().join(
             db.History, on=(
                 db.SentPayments.tx_hash == db.History.hash))
 
