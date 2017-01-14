@@ -60,6 +60,15 @@ class StealthAddressField(Field):
         assert address is not None
         return address
 
+class GenericAddressField(Field):
+    db_field = "generic_address"
+
+    def db_value(self, address):
+        return str(address)
+
+    def python_value(self, address):
+        return address
+
 class HdPrivateField(Field):
     db_field = "hd_private"
 
