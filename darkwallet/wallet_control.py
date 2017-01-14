@@ -72,8 +72,8 @@ class QueryBlockchainReorganizationProcess(BaseProcess):
         if self.model.compare_indexes(index):
             # Nothing changed.
             return
-        print("Last height:", last_height)
         print("Current height:", self.model.current_height)
+        print("Latest height:", last_height)
 
         if self.model.current_index is None:
             print("Initializing new chain state.")
