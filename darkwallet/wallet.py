@@ -378,7 +378,7 @@ class CacheModel:
 
     @property
     def transactions(self):
-        return TransactionCacheModel(self._account_model)
+        return TransactionCacheModel()
 
 class HistoryModel:
 
@@ -553,9 +553,6 @@ class HistoryRowModel:
         return (self.hash, self.index), self.value
 
 class TransactionCacheModel:
-
-    def __init__(self, model):
-        self._model = model
 
     def __getitem__(self, tx_hash):
         if isinstance(tx_hash, bc.HashDigest):
