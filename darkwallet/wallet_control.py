@@ -16,7 +16,7 @@ class WalletControlProcess:
             GenerateKeysProcess(self, client, model)
         ]
 
-    def wakeup(self):
+    def wakeup_processes(self):
         [process.wakeup() for process in self._procs]
 
 class BaseProcess:
@@ -55,6 +55,11 @@ class BaseProcess:
 
 class QueryBlockchainReorganizationProcess(BaseProcess):
 
+    def __init__(self, parent, client, model):
+        super().__init__(parent, client, model)
+
+        self._max_rewind_depth = 50
+
     async def update(self):
         head = await self._query_blockchain_head()
         if head is None:
@@ -63,11 +68,11 @@ class QueryBlockchainReorganizationProcess(BaseProcess):
         last_height, header = head
         index = last_height, header.hash()
 
-        print("Last height:", last_height)
-        print("Current height:", self.model.current_height)
         if self.model.compare_indexes(index):
             # Nothing changed.
             return
+        print("Last height:", last_height)
+        print("Current height:", self.model.current_height)
 
         if self.model.current_index is None:
             print("Initializing new chain state.")
@@ -81,6 +86,9 @@ class QueryBlockchainReorganizationProcess(BaseProcess):
 
         self._record(index)
 
+        # Wakeup the other processes.
+        self.parent.wakeup_processes()
+
     async def _query_blockchain_head(self):
         ec, height = await self.client.last_height()
         if ec:
@@ -93,7 +101,13 @@ class QueryBlockchainReorganizationProcess(BaseProcess):
         header = bc.Header.from_data(header)
         return height, header
 
-    async def _index_is_connected(self, index):
+    async def _index_is_connected(self, index, current_recursions=1):
+        # To avoid long rewinds, if we recurse too much
+        # just treat it as a reorganization event.
+        if current_recursions > self._max_rewind_depth:
+            print("Exceeded max rewind depth.")
+            return False
+
         height, hash_ = index
         print("Rewinding from:", index)
 
@@ -119,15 +133,19 @@ class QueryBlockchainReorganizationProcess(BaseProcess):
         # Run the check for the next block along now.
         previous_index = height - 1, header.previous_block_hash
 
-        return await self._index_is_connected(previous_index)
+        return await self._index_is_connected(previous_index,
+                                              current_recursions + 1)
 
     # ------------------------------------------------
     # Invalidate records because of reorganization.
     # ------------------------------------------------
 
     def _invalidate_records(self):
+        print("Invalidating records...")
         self._clear_history()
+        print("Cleared history.")
         self._nullify_address_updated_heights()
+        print("Reset address updated heights.")
 
     def _clear_history(self):
         self.model.cache.history.clear()
@@ -141,7 +159,7 @@ class QueryBlockchainReorganizationProcess(BaseProcess):
 
     def _record(self, index):
         print("Updating current_index to:", index)
-        self._model.current_index = index
+        self.model.current_index = index
 
 class ScanStealthProcess(BaseProcess):
 
