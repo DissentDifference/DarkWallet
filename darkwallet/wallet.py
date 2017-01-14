@@ -634,11 +634,11 @@ class Account:
     def start_scanning(self):
         self._connect()
 
-        #from darkwallet.wallet_control import WalletControlProcess
-        #self._controller = WalletControlProcess(self._model)
+        from darkwallet.wallet_control import WalletControlProcess
+        self._controller = WalletControlProcess(self.client, self._model)
 
-        loop = asyncio.get_event_loop()
-        self._scan_task = loop.create_task(self._check_updates())
+        #loop = asyncio.get_event_loop()
+        #self._scan_task = loop.create_task(self._check_updates())
 
     def _connect(self):
         client_settings = libbitcoin.server.ClientSettings()
@@ -653,77 +653,6 @@ class Account:
         else:
             self.client = Client(self._context, url, client_settings)
         print("Connected to %s" % url)
-
-    async def _check_updates(self):
-        while True:
-            await self._query_blockchain_reorg()
-            await asyncio.sleep(5)
-
-    async def _query_blockchain_reorg(self):
-        head = await self._query_blockchain_head()
-        if head is None:
-            return
-        last_height, header = head
-        index = last_height, header.hash()
-        print("Last height:", last_height)
-        print("Current height:", self._model.current_height)
-        if self._model.compare_indexes(index):
-            # Nothing changed.
-            return
-        if header.previous_block_hash == self._model.current_hash:
-            print("New single block added.")
-            from_height = self._model.current_height
-        elif await self._index_is_connected(index):
-            print("Several new blocks added.")
-            from_height = self._model.current_height
-        else:
-            print("Blockchain reorganization event.")
-            self._updating_history = True
-            from_height = 0
-            self._clear_history()
-        await self._update(index, from_height)
-        self._finish_reorg(index)
-
-    async def _index_is_connected(self, index):
-        height, hash_ = index
-        print("Rewinding from:", index)
-
-        if height <= self._model.current_height:
-            print("Rewinded past current index.")
-            return False
-
-        ec, header = await self.client.block_header(height)
-        if ec:
-            print("Error: querying header:", ec, file=sys.stderr)
-            return False
-        header = bc.Header.from_data(header)
-
-        if header.hash() != hash_:
-            print("Error: non-matching header and index hash.",
-                  file=sys.stderr)
-            return False
-
-        if header.previous_block_hash == self._model.current_hash:
-            return True
-
-        previous_index = height - 1, header.previous_block_hash
-
-        return await self._index_is_connected(previous_index)
-
-    async def _query_blockchain_head(self):
-        ec, height = await self.client.last_height()
-        if ec:
-            print("Error: querying last_height:", ec, file=sys.stderr)
-            return None
-        ec, header = await self.client.block_header(height)
-        if ec:
-            print("Error: querying header:", ec, file=sys.stderr)
-            return None
-        header = bc.Header.from_data(header)
-        return height, header
-
-    def _clear_history(self):
-        self._model.cache.history.clear()
 
     async def _update(self, index, from_height):
         await self._query_stealth(from_height)
