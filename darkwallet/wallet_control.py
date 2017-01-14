@@ -16,7 +16,7 @@ class WalletControlProcess:
             MarkSentPaymentsConfirmedProcess(self, client, model),
             FillCacheProcess(self, client, model),
             GenerateKeysProcess(self, client, model, settings),
-            RebroadcastProcess(self, cleint, model)
+            RebroadcastProcess(self, client, model)
         ]
 
     def wakeup_processes(self):
