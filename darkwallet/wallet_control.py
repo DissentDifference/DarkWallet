@@ -167,15 +167,21 @@ class ScanStealthProcess(BaseProcess):
     def _stealth_addrs(self):
         return [pocket.stealth_address for pocket in self.model.pockets]
 
-    async def update(self):
+    def _minimum_last_update_height(self):
         heights = []
         for stealth_address in self.model.stealth_addrs:
             tracker = self.model.cache.track_address_updates
             last_updated_height = tracker.last_updated_height(stealth_address)
             heights.append(last_updated_height)
 
-        from_height = min(heights)
+        return min(heights)
+
+    async def update(self):
+        from_height = self._minimum_last_update_height()
         await self._query_stealth(from_height)
+
+        for stealth_address in self.model.stealth_addrs:
+            self._mark_address_updated(address)
 
     async def _query_stealth(self, from_height):
         genesis_height = 0
@@ -221,6 +227,14 @@ class ScanStealthProcess(BaseProcess):
 
         private_key = receiver.derive_private(ephemeral_public)
         pocket.add_stealth_key(original_address, private_key)
+
+    # ------------------------------------------------
+    # Finish by marking stealth address updated.
+    # ------------------------------------------------
+
+    def _mark_address_updated(self, address):
+        last_height = self.model.current_height
+        self.model.set_last_updated_height(address, last_height)
 
 class ScanHistoryProcess(BaseProcess):
 
