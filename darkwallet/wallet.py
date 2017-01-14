@@ -182,15 +182,13 @@ class AccountModel:
                 value=value
             )
 
-    def mark_sent_transaction_confirmed(self, tx_hash):
-        try:
-            sent_model = db.SentPayments.get(
-                db.SentPayments.tx_hash == tx_hash)
-        except db.DoesNotExist:
-            return
-        print("%s is confirmed." % bc.encode_hash(tx_hash))
-        sent_model.is_confirmed = True
-        sent_model.save()
+    def mark_any_confirmed_sent_payments(self):
+        sent_rows = db.SentPayments.select().join(db.History).where(
+            db.SentPayments.tx_hash == db.History.hash)
+
+        for row in sent_rows:
+            row.is_confirmed = True
+            row.save()
 
     def all_pending_payments(self):
         pending = db.SentPayments.select().where(
@@ -380,6 +378,10 @@ class CacheModel:
     def transactions(self):
         return TransactionCacheModel()
 
+    @property
+    def track_address_updates(self):
+        return TrackAddressUpdatesModel()
+
 class HistoryModel:
 
     def __init__(self, account_model):
@@ -552,6 +554,34 @@ class HistoryRowModel:
         assert self.is_output
         return (self.hash, self.index), self.value
 
+class TrackAddressUpdatesModel:
+
+    def __init__(self, account_model):
+        self._account_model = account_model
+
+    def clear(self):
+        account = self._account_model
+        query = db.TrackAddressUpdates.delete().where(
+            db.TrackAddressUpdates.account == account)
+        query.execute()
+
+    def _get_row(self, address):
+        try:
+            row = db.TrackAddressUpdates.get(
+                db.TrackAddressUpdates.address == address)
+        except db.DoesNotExist:
+            return None
+        return row
+
+    def last_updated_height(self, address):
+        row = self._get_row(address)
+        return row.last_updated_height if row else 0
+
+    def set_last_updated_height(self, address, height):
+        row = self._get_row(address)
+        row.last_updated_height = height
+        row.save()
+
 class TransactionCacheModel:
 
     def __getitem__(self, tx_hash):
@@ -634,9 +664,6 @@ class Account:
         from darkwallet.wallet_control import WalletControlProcess
         self._controller = WalletControlProcess(self.client, self._model)
 
-        #loop = asyncio.get_event_loop()
-        #self._scan_task = loop.create_task(self._check_updates())
-
     def _connect(self):
         client_settings = libbitcoin.server.ClientSettings()
         client_settings.query_expire_time = self._settings.query_expire_time
@@ -650,121 +677,6 @@ class Account:
         else:
             self.client = Client(self._context, url, client_settings)
         print("Connected to %s" % url)
-
-    async def _update(self, index, from_height):
-        await self._query_stealth(from_height)
-        await self._sync_history(from_height)
-        print("Scanned.")
-        await self._fill_cache()
-        print("Cache filled.")
-        await self._generate_keys()
-        print("Updated.")
-
-    def _finish_reorg(self, index):
-        print("Updating current_index to:", index)
-        self._model.current_index = index
-        self._updating_history = False
-
-    async def _sync_history(self, from_height):
-        tasks = []
-        for pocket in self._model.pockets:
-            for address in pocket.addrs:
-                tasks.append(self._scan(address, from_height, pocket))
-
-        await asyncio.gather(*tasks)
-
-    async def _scan(self, address, from_height, pocket):
-        ec, history = await self.client.history(address.encoded())
-        if ec:
-            print("Couldn't fetch history:", ec, file=sys.stderr)
-            return
-
-        print("Fetching history for", address)
-        self._model.cache.history.set(address, history, pocket)
-        for output, spend in history:
-            if spend is None:
-                continue
-            tx_hash = bc.HashDigest.from_bytes(spend[0].hash[::-1])
-            self._model.mark_sent_transaction_confirmed(tx_hash)
-
-    async def _fill_cache(self):
-        for tx_hash in self._model.cache.history.transaction_hashes:
-            if not tx_hash in self._model.cache.transactions:
-                await self._grab_tx(tx_hash)
-
-    async def _grab_tx(self, tx_hash):
-        ec, tx_data = await self.client.transaction(tx_hash.data)
-        if ec:
-            print("Couldn't fetch transaction:", ec, file=sys.stderr)
-            return
-        print("Got tx:", tx_hash)
-        tx = bc.Transaction.from_data(tx_data)
-        self._model.cache.transactions[tx_hash] = tx
-
-    async def _generate_keys(self):
-        for pocket in self._model.pockets:
-            self._generate_pocket_keys(pocket)
-
-    def _generate_pocket_keys(self, pocket):
-        max_i = -1
-        for address in pocket.addrs:
-            if address not in self._model.cache.history:
-                continue
-            i = pocket.address_index(address)
-            if i is None:
-                continue
-            max_i = max(i, max_i)
-        desired_len = max_i + 1 + self._settings.gap_limit
-        remaining = desired_len - pocket.number_normal_keys()
-        assert remaining >= 0
-        for i in range(remaining):
-            pocket.add_key()
-        print("Generated %s keys" % remaining)
-
-    async def _query_stealth(self, from_height):
-        genesis_height = 0
-        if self._model.is_testnet:
-            genesis_height = 1063370
-        from_height = max(genesis_height, from_height)
-        # We haven't implemented prefixes yet.
-        prefix = libbitcoin.server.Binary(0, b"")
-        print("Starting stealth query. [from_height=%s]" % from_height)
-        ec, rows = await self.client.stealth(prefix, from_height)
-        print("Stealth query done.")
-        if ec:
-            print("Error: query stealth:", ec, file=sys.stderr)
-            return
-        for ephemkey, address_hash, tx_hash in rows:
-            ephemeral_public = bytes([2]) + ephemkey[::-1]
-            ephemeral_public = bc.EcCompressed.from_bytes(ephemeral_public)
-
-            version = self._model.payment_address_version()
-
-            address = bc.PaymentAddress.from_hash(address_hash[::-1],
-                                                  version)
-            
-            tx_hash = bc.HashDigest.from_bytes(tx_hash[::-1])
-
-            await self._scan_all_pockets_for_stealth(ephemeral_public,
-                                                     address, tx_hash)
-
-    async def _scan_all_pockets_for_stealth(self, ephemeral_public,
-                                            original_address, tx_hash):
-        for pocket in self._model.pockets:
-            await self._scan_pocket_for_stealth(pocket, ephemeral_public,
-                                                original_address, tx_hash)
-
-    async def _scan_pocket_for_stealth(self, pocket, ephemeral_public,
-                                       original_address, tx_hash):
-        receiver = pocket.stealth_receiver
-        derived_address = receiver.derive_address(ephemeral_public)
-        if derived_address is None or original_address != derived_address:
-            return
-        assert original_address == derived_address
-        print("Found match:", derived_address)
-        
-        private_key = receiver.derive_private(ephemeral_public)
-        pocket.add_stealth_key(original_address, private_key)
 
     def list_pockets(self):
         return self._model.pocket_names

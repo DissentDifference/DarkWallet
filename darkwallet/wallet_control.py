@@ -11,7 +11,7 @@ class WalletControlProcess:
             QueryBlockchainReorganizationProcess(self, client, model),
             ScanStealthProcess(self, client, model),
             ScanHistoryProcess(self, client, model),
-            MarkConfirmedProcess(self, client, model),
+            MarkSentPaymentsConfirmedProcess(self, client, model),
             FillCacheProcess(self, client, model),
             GenerateKeysProcess(self, client, model)
         ]
@@ -151,7 +151,7 @@ class QueryBlockchainReorganizationProcess(BaseProcess):
         self.model.cache.history.clear()
 
     def _nullify_address_updated_heights(self):
-        pass
+        self.model.cache.track_address_updates.clear()
 
     # ------------------------------------------------
     # Finish by writing the new current index.
@@ -163,26 +163,156 @@ class QueryBlockchainReorganizationProcess(BaseProcess):
 
 class ScanStealthProcess(BaseProcess):
 
+    @property
+    def _stealth_addrs(self):
+        return [pocket.stealth_address for pocket in self.model.pockets]
+
     async def update(self):
-        pass
+        heights = []
+        for stealth_address in self.model.stealth_addrs:
+            tracker = self.model.cache.track_address_updates
+            last_updated_height = tracker.last_updated_height(stealth_address)
+            heights.append(last_updated_height)
+
+        from_height = min(heights)
+        await self._query_stealth(from_height)
+
+    async def _query_stealth(self, from_height):
+        genesis_height = 0
+        if self.model.is_testnet:
+            genesis_height = 1063370
+        from_height = max(genesis_height, from_height)
+        # We haven't implemented prefixes yet.
+        prefix = libbitcoin.server.Binary(0, b"")
+        print("Starting stealth query. [from_height=%s]" % from_height)
+        ec, rows = await self.client.stealth(prefix, from_height)
+        print("Stealth query done.")
+        if ec:
+            print("Error: query stealth:", ec, file=sys.stderr)
+            return
+        for ephemkey, address_hash, tx_hash in rows:
+            ephemeral_public = bytes([2]) + ephemkey[::-1]
+            ephemeral_public = bc.EcCompressed.from_bytes(ephemeral_public)
+
+            version = self.model.payment_address_version()
+
+            address = bc.PaymentAddress.from_hash(address_hash[::-1],
+                                                  version)
+
+            tx_hash = bc.HashDigest.from_bytes(tx_hash[::-1])
+
+            await self._scan_all_pockets_for_stealth(ephemeral_public,
+                                                     address, tx_hash)
+
+    async def _scan_all_pockets_for_stealth(self, ephemeral_public,
+                                            original_address, tx_hash):
+        for pocket in self.model.pockets:
+            await self._scan_pocket_for_stealth(pocket, ephemeral_public,
+                                                original_address, tx_hash)
+
+    async def _scan_pocket_for_stealth(self, pocket, ephemeral_public,
+                                       original_address, tx_hash):
+        receiver = pocket.stealth_receiver
+        derived_address = receiver.derive_address(ephemeral_public)
+        if derived_address is None or original_address != derived_address:
+            return
+        assert original_address == derived_address
+        print("Found match:", derived_address)
+
+        private_key = receiver.derive_private(ephemeral_public)
+        pocket.add_stealth_key(original_address, private_key)
 
 class ScanHistoryProcess(BaseProcess):
 
     async def update(self):
-        pass
+        tasks = []
+        for pocket in self.model.pockets:
+            tasks += [
+                self._process(address, pocket) for address in pocket.addrs
+            ]
 
-class MarkConfirmedProcess(BaseProcess):
+        # Remove all the None values
+        tasks = [task for task in tasks if task is not None]
+
+        await asyncio.gather(*tasks)
+
+    def _process(self, address, pocket):
+        tracker = self.model.cache.track_address_updates
+
+        from_height = tracker.last_updated_height(address)
+
+        if from_height == self.model.current_height:
+            return None
+        assert from_height < self.model.current_height
+
+        coroutine = self._scan(address, from_height, pocket)
+        return coroutine
+
+    async def _scan(self, address, from_height, pocket):
+        ec, history = await self.client.history(address.encoded())
+        if ec:
+            print("Couldn't fetch history:", ec, file=sys.stderr)
+            return
+
+        print("Fetched history for", address)
+
+        self._set_history(address, history, pocket)
+
+        self._mark_address_updated(address)
+
+    def _set_history(self, address, history, pocket):
+        self.model.cache.history.set(address, history, pocket)
+
+    def _mark_address_updated(self, address):
+        last_height = self.model.current_height
+        self.model.set_last_updated_height(address, last_height)
+
+class MarkSentPaymentsConfirmedProcess(BaseProcess):
 
     async def update(self):
-        pass
+        self.mark_any_confirmed_sent_payments()
 
 class FillCacheProcess(BaseProcess):
 
     async def update(self):
-        pass
+        await self._fill_cache()
+
+    async def _fill_cache(self):
+        for tx_hash in self.model.cache.history.transaction_hashes:
+            if not tx_hash in self.model.cache.transactions:
+                await self._grab_tx(tx_hash)
+
+    async def _grab_tx(self, tx_hash):
+        ec, tx_data = await self.client.transaction(tx_hash.data)
+        if ec:
+            print("Couldn't fetch transaction:", ec, file=sys.stderr)
+            return
+        print("Got tx:", tx_hash)
+        tx = bc.Transaction.from_data(tx_data)
+        self.model.cache.transactions[tx_hash] = tx
 
 class GenerateKeysProcess(BaseProcess):
 
     async def update(self):
-        pass
+        await self._generate_keys()
+
+    async def _generate_keys(self):
+        for pocket in self.model.pockets:
+            self._generate_pocket_keys(pocket)
+
+    def _generate_pocket_keys(self, pocket):
+        max_i = -1
+        for address in pocket.addrs:
+            if address not in self.model.cache.history:
+                continue
+            i = pocket.address_index(address)
+            if i is None:
+                continue
+            max_i = max(i, max_i)
+        desired_len = max_i + 1 + self._settings.gap_limit
+        remaining = desired_len - pocket.number_normal_keys()
+        assert remaining >= 0
+        for i in range(remaining):
+            pocket.add_key()
+        print("Generated %s keys" % remaining)
 

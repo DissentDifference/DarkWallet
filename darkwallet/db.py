@@ -53,9 +53,10 @@ class PocketStealthKeys(BaseModel):
     address = PaymentAddressField(index=True)
     secret = EcSecretField()
 
-class AddressUpdates(BaseModel):
+class TrackAddressUpdates(BaseModel):
+    account = ForeignKeyField(Account, related_name="track_address_updates")
     address = GenericAddressField(unique=True)
-    updated_height = IntegerField(null=True)
+    last_updated_height = IntegerField()
 
 class TransactionCache(BaseModel):
     hash = HashDigestField(unique=True)
@@ -74,7 +75,7 @@ class History(BaseModel):
 
     spend = ForeignKeyField("self", null=True)
 
-    hash = HashDigestField()
+    hash = HashDigestField(unique=True)
     index_ = IntegerField()
     height = IntegerField()
 
@@ -104,7 +105,7 @@ def create_tables():
         Pocket,
         PocketKeys,
         PocketStealthKeys,
-        AddressUpdates,
+        TrackAddressUpdates,
         TransactionCache,
         History,
         SentPayments,
