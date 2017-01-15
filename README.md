@@ -1,6 +1,4 @@
-$ pip3 install pyelliptic tornado
-
-Install libbitcoin-c, libsodium
+Install libbitcoin-c, sqlcipher
 
 Install python-libbitcoin from the repo.
 
