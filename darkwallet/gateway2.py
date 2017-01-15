@@ -46,8 +46,10 @@ class Gateway:
             return
 
         if self._is_stop_command(request):
+            print("Stopping darkwallet-daemon...")
             self.stop()
             loop.stop()
+            return
         elif request["command"] in self._wallet.commands:
             response = await self._wallet.handle(request)
         else:
