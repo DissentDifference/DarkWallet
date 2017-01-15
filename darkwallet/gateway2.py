@@ -45,7 +45,10 @@ class Gateway:
             print("Error: malformed request:", message, file=sys.stderr)
             return
 
-        if request["command"] in self._wallet.commands:
+        if self._is_stop_command(request):
+            self.stop()
+            loop.stop()
+        elif request["command"] in self._wallet.commands:
             response = await self._wallet.handle(request)
         else:
             print("Error: unhandled command. Dropping:",
@@ -63,6 +66,16 @@ class Gateway:
         # }
         return ("command" in request) and ("id" in request) and \
             ("params" in request and type(request["params"]) == list)
+
+    def _is_stop_command(self, request):
+        return request["command"] == "dw_stop"
+
+    def _stop_response(self, request):
+        return {
+            "id": request["id"],
+            "error": None,
+            "result": []
+        }
 
     async def serve(self):
         port = self.settings.port
