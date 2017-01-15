@@ -1077,8 +1077,9 @@ class Wallet:
         self._account_names = darkwallet.util.list_files(self.accounts_path)
         self._account = None
 
-    async def stop(self):
-        self._account.stop()
+    def stop(self):
+        if self._account is not None:
+            self._account.stop()
 
     @property
     def accounts_path(self):
@@ -1266,11 +1267,4 @@ class Wallet:
             return ErrorCode.not_found, []
         self._settings.save()
         return None, []
-
-    async def stop(self):
-        if self._account is not None:
-            self._account.stop()
-        self._context.stop()
-        loop = asyncio.get_event_loop()
-        loop.stop()
 

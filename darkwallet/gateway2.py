@@ -22,6 +22,7 @@ class Gateway:
 
     def stop(self):
         self.context.stop()
+        self._wallet.stop()
 
     async def _accept(self, websocket, path):
         print("Connection opened.")

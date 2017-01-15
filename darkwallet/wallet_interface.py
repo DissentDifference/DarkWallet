@@ -246,7 +246,7 @@ class DwSetSetting(WalletInterfaceCallback):
 class DwStop(WalletInterfaceCallback):
 
     async def make_query(self):
-        await self._wallet.stop()
+        self._wallet.stop()
         return None, []
 
 class WalletInterface:
@@ -276,6 +276,9 @@ class WalletInterface:
 
     def __init__(self, context, settings):
         self._wallet = darkwallet.wallet.Wallet(context, settings)
+
+    def stop(self):
+        self._wallet.stop()
 
     @property
     def commands(self):
