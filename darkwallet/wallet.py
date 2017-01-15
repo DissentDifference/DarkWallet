@@ -689,7 +689,7 @@ class Account:
         if self._settings.use_tornado_impl:
             self.client = FakeAsyncClient(self._context, url, client_settings)
         else:
-            self.client = Client(self._context, url, client_settings)
+            self.client = self._context.Client(url, client_settings)
         print("Connected to %s" % url)
 
     def list_pockets(self):
