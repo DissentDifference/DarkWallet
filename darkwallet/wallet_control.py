@@ -43,7 +43,7 @@ class BaseProcess:
         self._task.cancel()
 
     def wakeup(self):
-        if not self._wakeup_future.cancelled():
+        if not self._wakeup_future.done():
             self._wakeup_future.set_result(None)
 
     async def _run(self):
