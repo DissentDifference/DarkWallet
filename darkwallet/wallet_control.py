@@ -356,12 +356,15 @@ class GenerateKeysProcess(BaseProcess):
                 continue
             max_i = max(i, max_i)
         desired_len = max_i + 1 + self._settings.gap_limit
+        # If we clear history and our view is incomplete
+        # then we may have more keys then we expect already.
+        if pocket.number_normal_keys() >= desired_len:
+            return
         remaining = desired_len - pocket.number_normal_keys()
-        assert remaining >= 0
+        assert remaining > 0
         for i in range(remaining):
             pocket.add_key()
-        if remaining:
-            print("Generated %s keys" % remaining)
+        print("Generated %s keys" % remaining)
 
 class RebroadcastProcess(BaseProcess):
 
