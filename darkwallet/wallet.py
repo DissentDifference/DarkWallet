@@ -11,7 +11,6 @@ from libbitcoin.server_fake_async import Client as FakeAsyncClient
 from libbitcoin.server import Client
 import darkwallet.util
 from libbitcoin import bc
-from darkwallet import sodium
 from darkwallet.stealth import StealthReceiver, StealthSender
 from darkwallet.address_validator import AddressValidator
 
