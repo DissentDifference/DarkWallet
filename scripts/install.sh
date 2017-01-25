@@ -256,7 +256,7 @@ INSTALL_ELECTRON_GUI(){
 
 # Include a darkwallet.desktop Icon to ~/.local: 
 INCLUDE_0(){
-    mkdir -p /home/genjix/.local/share/icons/hicolor/128x128/
+    mkdir -p $HOME/.local/share/icons/hicolor/128x128/
     cp $DW_DSKTP/darkwallet-electron-ui/resources/images/icon_128.png $HOME/.local/share/icons/hicolor/128x128/darkwallet_icon_128.png
     mkdir -p $HOME/.local/share/applications
     touch $HOME/.local/share/applications/darkwallet.desktop
