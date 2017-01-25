@@ -46,6 +46,7 @@ DW_CREATE_DIR(){
 # Create directiory for local installation. Setting environment variables: PKG_CONFIG_PATH | LD_LIBRARY_PATH | USR_LOCAL_PATH
 # Change "USR_LOCAL_PATH" to select a different path. (example: changing "export USR_LOCAL_PATH=$DW_DSKTP/usr" to "export USR_LOCAL_PATH=$HOME/usr")
 USR_LOCAL_ENV(){
+    DW_DSKTP=$HOME/darkwallet_desktop
     if [ ! -d $DW_DSKTP/usr ]; then
         mkdir -p $DW_DSKTP/usr
         USR_LOCAL_PATH=$DW_DSKTP/usr
