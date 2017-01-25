@@ -26,7 +26,7 @@ WHOAMI(){
 
 # Installing dependences to download, compile and install libbitcoin. NPM, python3, sqlipher and pip3 are also needed.
 DEPENDENCIES(){
-    sudo apt install build-essential autoconf automake libtool pkg-config git libboost-all-dev npm tor torsocks libpython3.5 libpython3.5-dev sqlcipher libsqlcipher-dev python3-pip libffi-dev python3-pycparser
+    sudo apt -y install build-essential autoconf automake libtool pkg-config git libboost-all-dev npm tor torsocks libpython3.5 libpython3.5-dev sqlcipher libsqlcipher-dev python3-pip libffi-dev python3-pycparser
 }
 
 # Create directory for local installation. Setting variables: DW_DSKTP | DW_LOG
