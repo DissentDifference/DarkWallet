@@ -1,6 +1,6 @@
-DarkWallet - Bitcoin privacy wallet for anonymous anarchist hackers
+## DarkWallet - Bitcoin privacy wallet for anonymous anarchist hackers
 
-Install the wallet on Ubuntu with this script:
+Install the wallet on Ubuntu with this command:
 
 ```
 $ wget -q -O- https://raw.githubusercontent.com/RojavaCrypto/launderwallet/master/scripts/install.sh | bash
