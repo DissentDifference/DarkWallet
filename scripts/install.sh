@@ -26,11 +26,11 @@ WHOAMI(){
 
 # Installing dependences to download, compile and install libbitcoin. NPM, python3, sqlipher and pip3 are also needed.
 DEPENDENCIES(){
-    sudo apt -y install build-essential autoconf automake libtool pkg-config git libboost-all-dev npm tor torsocks libpython3.5 libpython3.5-dev sqlcipher libsqlcipher-dev python3-pip libffi-dev python3-pycparser
+    sudo apt -y install build-essential autoconf automake libtool pkg-config git libboost-all-dev npm tor torsocks libpython3.5 libpython3.5-dev sqlcipher libsqlcipher-dev python3-pip libffi-dev python3-pycparser dh-autoreconf
 }
 
 # Create directory for local installation. Setting variables: DW_DSKTP | DW_LOG
-# Another install path can be used changing DW_DSKTP variable (examplo: changing "export DW_DSKTP=$HOME/darkwallet_desktop" by "export DW_DSKTP=$HOME/workspace/darkwallet").
+# Another install path can be used changing DW_DSKTP variable (example: changing "export DW_DSKTP=$HOME/darkwallet_desktop" by "export DW_DSKTP=$HOME/workspace/darkwallet").
 DW_CREATE_DIR(){ 
     DW_DSKTP=$HOME/darkwallet_desktop
     DW_LOG=$DW_DSKTP/debug.log
@@ -106,6 +106,9 @@ INSTALL_LIBITCOIN(){
         cd $DW_DSKTP
         git clone https://github.com/libbitcoin/libbitcoin.git
         cd $DW_DSKTP/libbitcoin
+        # Checkout recent commit of libbitcoin that works
+        # with libbitcoin-c
+        git checkout f9ff27a2
         ./autogen.sh >> $DW_LOG
         ./configure --prefix $USR_LOCAL_PATH >> $DW_LOG
         make -j2 install >> $DW_LOG
@@ -114,6 +117,7 @@ INSTALL_LIBITCOIN(){
         cd $DW_DSKTP
         git clone https://github.com/libbitcoin/libbitcoin.git
         cd $DW_DSKTP/libbitcoin
+        git checkout f9ff27a2b
         ./autogen.sh >> $DW_LOG
         ./configure --prefix $USR_LOCAL_PATH >> $DW_LOG
         make -j2 install >> $DW_LOG
@@ -124,8 +128,8 @@ INSTALL_LIBITCOIN(){
 
 # Install/Update libbitcoin-c:
 INSTALL_LIBBITCOINC(){ 
-    echo "INSTALL_LIBITCOINC" >> $DW_LOG
-    echo "INSTALL_LIBITCOINC"
+    echo "INSTALL_LIBBITCOINC" >> $DW_LOG
+    echo "INSTALL_LIBBITCOINC"
     if [ ! -d $DW_DSKTP/libbitcoin-c ]; then
         cd $DW_DSKTP
         git clone https://github.com/libbitcoin/libbitcoin-c.git
@@ -216,18 +220,18 @@ INSTALL_PEEWEE(){
 #-----------------------------------------------------------
 
 # Install/Update darkwallet daemon:
-INSTALL_LAUNDERWALLET(){
-    echo "INSTALL_LAUNDERWALLET" >> $DW_LOG
-    echo "INSTALL_LAUNDERWALLET"
+INSTALL_DARKWALLET(){
+    echo "INSTALL_DARKWALLET" >> $DW_LOG
+    echo "INSTALL_DARKWALLET"
     if [ ! -d $DW_DSKTP/darkwallet ]; then
         cd $DW_DSKTP
-        git clone https://github.com/RojavaCrypto/launderwallet
-        mv $DW_DSKTP/launderwallet $DW_DSKTP/darkwallet
+        git clone https://github.com/DissentDifference/DarkWallet.git
+        mv $DW_DSKTP/DarkWallet $DW_DSKTP/darkwallet
     elif [ -d $DW_DSKTP/darkwallet ]; then
         rm $DW_DSKTP/darkwallet
         cd $DW_DSKTP
-        git clone https://github.com/RojavaCrypto/launderwallet
-        mv $DW_DSKTP/launderwallet $DW_DSKTP/darkwallet
+        git clone https://github.com/DissentDifference/DarkWallet.git
+        mv $DW_DSKTP/DarkWallet $DW_DSKTP/darkwallet
     else
         exit 1
     fi    
@@ -338,7 +342,7 @@ if [ $FIRST_INSTALL == true ]; then
     INSTALL_LIBITCOIN
     INSTALL_LIBBITCOINC
     INSTALL_PY_LIBBTC
-    INSTALL_LAUNDERWALLET
+    INSTALL_DARKWALLET
     INSTALL_ELECTRON_GUI
     INCLUDE_0
     FINISH
@@ -346,7 +350,7 @@ else
     INSTALL_LIBITCOIN
     INSTALL_LIBBITCOINC
     INSTALL_PY_LIBBTC
-    INSTALL_LAUNDERWALLET
+    INSTALL_DARKWALLET
     INSTALL_ELECTRON_GUI
     FINISH
 fi
