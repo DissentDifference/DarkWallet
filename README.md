@@ -1,3 +1,9 @@
+# This project is now replaced by [DarkFi](https://dark.fi/)
+
+https://codeberg.org/darkrenaissance/darkfi
+
+https://github.com/darkrenaissance/darkfi
+
 ## DarkWallet - Bitcoin privacy wallet for anonymous anarchist hackers
 
 Install the wallet on Ubuntu with this command:
